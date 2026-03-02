@@ -84,8 +84,8 @@ function processarMarketingRedirecionamento(textoBruto, fromId) {
 function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, templateString, templateWpp, margemPct, templateBalcao) {
   console.log(`[TEMPLATE] Iniciando montagem para: ${dados.programa}`);
 
-  // =================================================================
-  // 1. CÁLCULO DE TAXAS (Lógica Original - Não mexer)
+// =================================================================
+  // 1. CÁLCULO DE TAXAS (Lógica Internacional + Volta sem data)
   // =================================================================
   let valorTaxas = 0;
   const buscarTaxa = (iata) => {
@@ -97,15 +97,31 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
   
   const taxasOrigem = buscarTaxa(dados.iataOrigem);
   const taxasDestino = buscarTaxa(dados.iataDestino);
-  const ehInternacional = (taxasDestino.int > 0 && taxasDestino.dom === 0);
+  
+  // É internacional se a origem OU o destino tiverem taxa INT maior que zero
+  const ehInternacional = (taxasDestino.int > 0 || taxasOrigem.int > 0);
 
+  // Soma Taxa de Ida (Origem)
   if (taxasOrigem) {
-    if (ehInternacional) valorTaxas += (taxasOrigem.int > 0) ? taxasOrigem.int : taxasOrigem.dom;
-    else valorTaxas += taxasOrigem.dom;
+    if (ehInternacional && taxasOrigem.int > 0) {
+      valorTaxas += taxasOrigem.int;
+    } else {
+      valorTaxas += taxasOrigem.dom;
+    }
   }
-  if (dados.dataVolta && taxasDestino) {
-    valorTaxas += (taxasDestino.int > taxasDestino.dom) ? taxasDestino.int : taxasDestino.dom;
+
+  // 🚨 CORREÇÃO: Verifica se tem Volta pela data OU pela palavra/emoji no texto
+  const temVolta = dados.dataVolta || (corpo && corpo.match(/Volta|Retorno|⬅|🛬/i));
+
+  // Soma Taxa de Volta (Destino)
+  if (temVolta && taxasDestino) {
+    if (ehInternacional && taxasDestino.int > 0) {
+      valorTaxas += taxasDestino.int;
+    } else {
+      valorTaxas += taxasDestino.dom;
+    }
   }
+  
   const textoTaxasDisplay = valorTaxas > 0 ? valorTaxas.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'}) : "A consultar";
 
  // =================================================================
@@ -222,6 +238,26 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
   if (linhasDeMilhas.length > 0) {
      textoMilhasDisplay = "" + linhasDeMilhas.join("\n").replace(/\+\s*taxas/gi, "").trim();
      if (isIberia) textoMilhasDisplay = textoMilhasDisplay.replace(/milhas/gi, "Avios");
+
+     // ✅ FIX TELEGRAM: linhas de milhas do Telegram não carregam data (ex: "🛫 Ida: 45.389 milhas")
+     // Se não achou nenhum padrão dd/mm, injeta a primeira data disponível de cada trecho
+     if (!textoMilhasDisplay.match(/\d{1,2}\/\d{1,2}/)) {
+       const fmt = (d) => d
+         ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
+         : null;
+       const dataIdaStr   = fmt(dados.dataIda);
+       const dataVoltaStr = fmt(dados.dataVolta);
+       if (dataIdaStr) {
+         textoMilhasDisplay = textoMilhasDisplay.replace(
+           /(🛫\s*Ida\s*:?\s*)/i, `$1${dataIdaStr} - `
+         );
+       }
+       if (dataVoltaStr) {
+         textoMilhasDisplay = textoMilhasDisplay.replace(
+           /(🛬\s*(?:Volta|Retorno)\s*:?\s*)/i, `$1${dataVoltaStr} - `
+         );
+       }
+     }
   } else if (dados.milhas > 0) {
      // Se não achou no texto, cria manual
      const milhasFormatadas = (dados.milhas).toLocaleString('pt-BR');
@@ -278,10 +314,10 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
       msgFinal = "🚀 ALERTA FãMilhaSVIP - {PROGRAMA}\n\n🌍 *{ORIGEM}*   ✈️   *{DESTINO}*\n\n{CORPO}\n\n ⚠️ _Preços promocionais não esperam e ainda estão sujeitos a disponibilidades da companhia!_ \n\n📲 *Acesse:* {LINK}";
   }
 
-  // Substitui as variáveis
-  msgFinal = msgFinal.replace(/{PROGRAMA}/g, dados.programa || "OFERTA");
-  msgFinal = msgFinal.replace(/{ORIGEM}/g, dados.origem || "Brasil");
-  msgFinal = msgFinal.replace(/{DESTINO}/g, dados.destino || "Mundo");
+  // Substitui as variáveis globais (Essas sim, são obrigatórias para o template funcionar)
+  msgFinal = msgFinal.replace(/{PROGRAMA}/g, (dados.programa || "OFERTA").toLocaleUpperCase('pt-BR'));
+  msgFinal = msgFinal.replace(/{ORIGEM}/g,  (dados.origem  || "BRASIL").toLocaleUpperCase('pt-BR'));
+  msgFinal = msgFinal.replace(/{DESTINO}/g, (dados.destino || "MUNDO").toLocaleUpperCase('pt-BR'));
   msgFinal = msgFinal.replace(/{LINK}/g, linkPronto || "https://familha.suportvip.com");
   
   // Injeta o miolo calculado
@@ -449,12 +485,41 @@ function processarValorMilhas(numRaw, sufixo) {
 }
 
 function extrairDatasDoTexto(texto) {
-  const regexIda = /(?:➡|Ida).*?(\d{1,2}\/\d{1,2})/i;
-  const regexVolta = /(?:⬅|Volta).*?(\d{1,2}\/\d{1,2})/i;
-  const mIda = texto.match(regexIda);
+  // ----------------------------------------------------------------
+  // Decide o formato presente no texto UMA VEZ, evitando falsos positivos.
+  // Formato Telegram: dd/mm/yyyy  |  Formato WPP: dd/mm (sem ano)
+  // ----------------------------------------------------------------
+  const temFormatoCompleto = /\d{2}\/\d{2}\/\d{4}/.test(texto);
+
+  if (temFormatoCompleto) {
+    // FORMATO TELEGRAM: extrai a PRIMEIRA data completa de cada trecho
+    // Busca na linha que contém o emoji/palavra correto
+    const linhas = texto.split('\n');
+    let idaDate   = null;
+    let voltaDate = null;
+
+    for (const linha of linhas) {
+      const ehIda   = /(?:🛫|➡)\s*Ida/i.test(linha);
+      const ehVolta = /(?:🛬|⬅)\s*(?:Volta|Retorno)/i.test(linha);
+      const matchData = linha.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+
+      if (matchData) {
+        const d = new Date(+matchData[3], +matchData[2]-1, +matchData[1]);
+        if (ehIda   && !idaDate)   idaDate   = d;
+        if (ehVolta && !voltaDate) voltaDate = d;
+      }
+    }
+    return { ida: idaDate, volta: voltaDate };
+  }
+
+  // FORMATO WPP: dd/mm curto após seta/palavra (sem ano no texto)
+  const regexIda   = /(?:➡|🛫\s*Ida).*?(\d{1,2}\/\d{1,2})/i;
+  const regexVolta = /(?:⬅|🛬\s*(?:Volta|Retorno)).*?(\d{1,2}\/\d{1,2})/i;
+  const mIda   = texto.match(regexIda);
   const mVolta = texto.match(regexVolta);
+
   return {
-    ida: mIda ? converterStringParaData(mIda[1]) : null,
+    ida:   mIda   ? converterStringParaData(mIda[1])   : null,
     volta: mVolta ? converterStringParaData(mVolta[1]) : null
   };
 }
@@ -752,6 +817,13 @@ const idApp = `${timestamp}_${programaLimpo}_${trechoLimpo}`;
     sheet.getRange(2, 1, 1, 4).setVerticalAlignment("middle").setWrap(true);
     sheet.getRange(2, 5, 1, 3).setVerticalAlignment("middle").setWrap(false); // Colunas E, F e G sem wrap
 
+    // 🚀 O GATILHO DO PUSH ENTRA AQUI! 🚀
+    // Assim que a linha 2 é criada, avisamos os celulares com a tela apagada
+    if (typeof enviarPushParaAtivos === 'function') {
+      console.log(`Disparando Push Ninja para: ${programa} - ${trecho}`);
+      enviarPushParaAtivos(programa, trecho);
+    }
+
   } catch(e) {
     console.error("Erro ao salvar na planilha:", e);
   }
@@ -837,26 +909,86 @@ function limparNome(s) {
   if (!s) return null;
   let t = s;
 
-  // 1. REMOÇÃO POR LISTA BRANCA (A Solução Definitiva)
-  // Mantém apenas: Letras (a-z), Acentos (\u00C0-\u00FF), Números, Espaços e Hífen.
-  // Tudo que for emoji, bandeira, losango () ou símbolo estranho será deletado.
+  // Remove emojis e símbolos (whitelist: letras, números, espaços, hífen, acentuados)
   t = t.replace(/[^\w\s\u00C0-\u00FF\-]/g, "");
 
-  // 2. LIMPEZA FINAL
-  // Remove espaços duplos que sobraram após apagar os emojis
-  return t.replace(/\s+/g, " ").trim().toUpperCase(); 
+  // Limpeza de espaços
+  t = t.replace(/\s+/g, " ").trim();
+
+  // ✅ FIX: toUpperCase() com locale pt-BR garante comportamento correto de acentos
+  return t.toLocaleUpperCase('pt-BR');
 }
 
+
 /**
- * Limpa o corpo da mensagem removendo lixo e padronizando formatos.
- * CORREÇÃO: Remoção agressiva da frase "Ei, cuida, visse!" antes do processamento.
+ * Normaliza o formato de datas do Telegram (🗓️ Datas) para o padrão WPP (Disponibilidades).
+ * Converte:
+ *   🗓️ Datas
+ *   🛫 Ida: 25/03/2026, 28/03/2026
+ *   🛬 Retorno: 08/04/2026, 11/04/2026
+ * Para:
+ *   Disponibilidades - IDA
+ *   Março: 25, 28
+ *   Disponibilidades - VOLTA
+ *   Abril: 8, 11
  */
+function normalizarDatasTelegramParaWpp(texto) {
+  // Só processa se tiver o indicador do formato Telegram
+  if (!texto.match(/🗓/)) return texto;
+
+  const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                      "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  function converterLinhaData(linha) {
+    const regex = /(\d{2})\/(\d{2})\/(\d{4})/g;
+    const grupos = {};
+    let match;
+    while ((match = regex.exec(linha)) !== null) {
+      const dia = parseInt(match[1]);
+      const mes = mesesNomes[parseInt(match[2]) - 1];
+      if (!grupos[mes]) grupos[mes] = [];
+      if (!grupos[mes].includes(dia)) grupos[mes].push(dia);
+    }
+    if (Object.keys(grupos).length === 0) return null;
+    return Object.entries(grupos)
+      .map(([mes, dias]) => `${mes}: ${dias.sort((a,b)=>a-b).join(', ')}`)
+      .join('\n');
+  }
+
+  // Captura o bloco inteiro a partir de 🗓️
+  const blocoRegex = /🗓[️\uFE0F]?\s*Datas?\s*\n([\s\S]*?)(?=\n[😎✅⚠❌🏆]|\nAtall|https?:\/\/|$)/i;
+  const blocoMatch = texto.match(blocoRegex);
+  if (!blocoMatch) return texto;
+
+  const linhasBloco = blocoMatch[1].split('\n');
+  let idaTexto = "";
+  let voltaTexto = "";
+
+  for (const linha of linhasBloco) {
+    const ehIda    = linha.match(/(?:🛫|➡|Ida)/i)    && linha.match(/\d{2}\/\d{2}\/\d{4}/);
+    const ehVolta  = linha.match(/(?:🛬|⬅|Volta|Retorno)/i) && linha.match(/\d{2}\/\d{2}\/\d{4}/);
+    if (ehIda)   idaTexto   = converterLinhaData(linha) || "";
+    if (ehVolta) voltaTexto = converterLinhaData(linha) || "";
+  }
+
+  let blocoNovo = "";
+  if (idaTexto)    blocoNovo += `Disponibilidades - IDA\n${idaTexto}\n`;
+  if (voltaTexto)  blocoNovo += `Disponibilidades - VOLTA\n${voltaTexto}\n`;
+
+  // Substitui o bloco original pelo normalizado
+  return texto.replace(blocoMatch[0], blocoNovo);
+}
+
 /**
  * Limpa o corpo da mensagem removendo lixo, links soltos e ajustando espaços.
  */
 function limparCorpoOferta(texto) {
   // 1. LIMPEZA INICIAL
   let textoBase = texto;
+
+  textoBase = normalizarDatasTelegramParaWpp(textoBase); // Converte datas do formato Telegram para o padrão WPP
+
+  // Substitui emojis de setas por texto (para facilitar a leitura e extração)
   textoBase = textoBase.replace(/➡/g, "🛫 Ida:"); 
   textoBase = textoBase.replace(/⬅/g, "🛬 Volta:");
   

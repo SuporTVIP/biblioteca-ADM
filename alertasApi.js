@@ -1,64 +1,60 @@
 // =======================================================
 // BUSCADOR DE ALERTAS (Corrigido para Coluna F)
 // =======================================================
-function buscarAlertasDelta(lastSyncDate) {
-  const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
-  const abaAlertas = ss.getSheetByName(aba.ALERTAS);
+function buscarAlertasDelta(lastSyncIso) {
+  const sheet = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM).getSheetByName(aba.ALERTAS);
+  const data = sheet.getDataRange().getValues();
+  const novos = [];
   
-  const lastRow = abaAlertas.getLastRow();
-  const startRow = Math.max(2, lastRow - 50); 
-  
-  if (lastRow < 2) return []; 
-  
-  // 🚀 LENDO DA COLUNA A ATÉ A COLUNA G (1 a 7)
-  const range = abaAlertas.getRange(startRow, 1, lastRow - startRow + 1, 7);
-  const valores = range.getValues();
-  
-  const alertasNovos = [];
-  const clienteDate = new Date(lastSyncDate);
+  // Converte a data enviada pelo Flutter em Milissegundos
+  const dataCorte = new Date(lastSyncIso).getTime();
 
-  for (let i = 0; i < valores.length; i++) {
-    let row = valores[i];
+  for (let i = 1; i < data.length; i++) {
+    // Converte a data da Planilha (Coluna C) em Milissegundos
+    const dataLinha = new Date(data[i][2]).getTime(); 
     
-    let rawDate = row[2]; // Coluna C (Data)
-    let rowDate;
-    
-    if (typeof rawDate === "string" && rawDate.includes("/")) {
-      let parts = rawDate.split(" ");
-      let dateParts = parts[0].split("/");
-      rowDate = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}T${parts[1] || "00:00:00"}`);
-    } else {
-      rowDate = new Date(rawDate);
-    }
-    
-    if (rowDate > clienteDate) {
-      alertasNovos.push({
-        id: rowDate.getTime().toString(), 
-        mensagem: row[0],   // Coluna A
-        programa: row[1],   // Coluna B
-        data: rowDate.toISOString(), // Coluna C
-        link: row[4],       // Coluna E
-        metadados: row[6]   // 🚀 Coluna G (O JSON do seu Regex!)
+    // Se a linha for mais nova que o corte, adiciona na lista
+    if (dataLinha > dataCorte) {
+      let metadados = {};
+      try {
+         metadados = data[i][6] ? JSON.parse(data[i][6]) : {};
+      } catch(e) {}
+
+      novos.push({
+        mensagem: data[i][0] || "",
+        programa: data[i][1] || "OUTROS",
+        data: data[i][2],
+        id: data[i][3] || (metadados.id_app ? metadados.id_app : "ID_" + i),
+        link: data[i][4] || "",
+        trecho: metadados.trecho || "N/A",
+        dataIda: metadados.data_ida || "N/A",
+        dataVolta: metadados.data_volta || "N/A",
+        milhas: metadados.milhas || "N/A",
+        valorFabricado: metadados.valor_fabricado || "N/A",
+        valorEmissao: metadados.valor_emissao || "N/A",
+        valorBalcao: metadados.valor_balcao || "N/A",
+        detalhes: metadados.detalhes || ""
       });
     }
   }
-  return alertasNovos;
+  return novos;
 }
 
 /**
  * 🚀 DISPARADOR DE PUSH (FCM v1)
  * Percorre os tokens ativos e envia o comando de sincronização.
  */
-function enviarPushParaAtivos() {
+/**
+ * 🚀 DISPARADOR DE PUSH NINJA (FCM v1) - DATA ONLY
+ * Percorre os tokens ativos e envia o pacote de dados oculto para o Flutter.
+ */
+function enviarPushParaAtivos(programa, trecho) {
   const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
   const sheet = ss.getSheetByName('CONTROLE_ACESSO'); 
   if (!sheet) return;
 
   const data = sheet.getDataRange().getValues();
   
-  // 🚀 CORREÇÃO DOS ÍNDICES BASEADO NA SUA PLANILHA:
-  // row[7] é a Coluna H (STATUS)
-  // row[11] é a Coluna L (FCM_TOKEN) que você acabou de criar
   const tokens = data.filter(row => row[7] === "ATIVO" && row[10] && row[10].toString().trim() !== "")
                      .map(row => row[10]);
 
@@ -74,24 +70,38 @@ function enviarPushParaAtivos() {
     return;
   }
 
-// Payload conforme a API v1 do Firebase
+  // 🚀 O NOVO PAYLOAD NINJA (SEM O BLOCO "notification")
   const payloadBase = {
     "message": {
+      // 1. O TRUQUE: Manda um título na notificação, mas SEM CORPO.
+      // O Android vê isso e acorda o celular imediatamente!
       "notification": {
-        "title": "🚨 Radar VIP: Nova Emissão!",
-        "body": "Uma nova oportunidade acaba de ser detectada."
+        "title": "🚨 Radar VIP Ativado"
       },
+      // 2. Os dados reais que o seu Porteiro (Flutter) vai ler
       "data": {
+        "tipo": "NOVO_ALERTA",
         "action": "SYNC_ALERTS",
+        "programa": programa || "Geral",
+        "trecho": trecho || "Nova Oportunidade VIP!",
         "since": new Date().toISOString()
       },
-      // 🚀 FURA O BLOQUEIO DE BATERIA DO ANDROID (MODO DOZE)
+      // 3. Furando o "Doze Mode" (Modo de Economia de Bateria)
       "android": {
-        "priority": "HIGH"
+        "priority": "HIGH",
+        "notification": {
+          "channel_id": "alertas_vip",
+          "sound": "default" // Força o Android a se preparar para tocar som
+        }
       },
-      // 🚀 PRIORIDADE PARA iOS 
       "apns": {
-        "headers": { "apns-priority": "10" } 
+        "headers": { "apns-priority": "10" },
+        "payload": {
+          "aps": {
+            "sound": "default",
+            "content-available": 1
+          }
+        }
       }
     }
   };
@@ -119,14 +129,10 @@ function enviarPushParaAtivos() {
         const respostaErro = response.getContentText();
         console.error("Erro no token " + fcmToken + ". Firebase: " + respostaErro);
         
-        // 🚀 FAXINA AUTOMÁTICA DE TOKENS INVÁLIDOS [cite: 194-206]
-        // Se o Firebase disser que o app foi desinstalado (404 / UNREGISTERED)
+        // 🚀 FAXINA AUTOMÁTICA DE TOKENS INVÁLIDOS
         if (responseCode === 404 || respostaErro.includes("UNREGISTERED") || respostaErro.includes("INVALID_ARGUMENT")) {
            for (let i = 0; i < data.length; i++) {
-             // row[10] é a Coluna K no array (índice 10)
              if (data[i][10] === fcmToken) { 
-               // i + 1 porque as linhas do Sheets começam em 1
-               // 11 é o número da Coluna K no Sheets
                sheet.getRange(i + 1, 11).setValue(''); 
                console.log("🧹 Token morto removido da linha " + (i + 1));
                break;
@@ -140,7 +146,7 @@ function enviarPushParaAtivos() {
     }
   });
 
-  console.log(`✅ Push finalizado! Entregue para ${sucessoCount} de ${tokens.length} dispositivos.`);
+  console.log(`✅ Push Ninja finalizado! Entregue para ${sucessoCount} de ${tokens.length} dispositivos.`);
 }
 
 // 🚀 BUSCADOR DE AEROPORTOS (Lê a aba TAXAS_AERO)

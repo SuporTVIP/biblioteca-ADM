@@ -95,3 +95,59 @@ function formatarErroParaLog(erroObjeto) {
   const timestamp = new Date().toISOString();
   return `[${timestamp}] ERROR: ${erroObjeto.message} | Stack: ${erroObjeto.stack}`;
 }
+
+/**
+ * Realiza um diagnóstico completo da saúde do projeto e permissões de rede.
+ * Corrigido para utilizar o método oficial getOAuthToken().
+ * * @return {Object} Relatório de integridade do ambiente para depuração do GitHub Assistant.
+ */
+function validarStatusIntegracaoGithub() {
+  const status = {
+    timestamp: new Date().toISOString(),
+    apiAcessivel: false,
+    escoposPresentes: [],
+    erro: null
+  };
+
+  try {
+    // 1. Testa se o ScriptApp consegue acessar o token OAuth2 do projeto.
+    // Conforme James Ferreira, o token é necessário para que serviços externos validem a identidade do script.
+    const token = ScriptApp.getOAuthToken();
+    status.escoposPresentes = token ? ["OAUTH_TOKEN_RECUPERADO"] : ["TOKEN_VAZIO"];
+    
+    // 2. Testa conectividade externa com a API do GitHub.
+    // 'Web Performance Tuning' sugere validar a rota antes de depurar a aplicação.
+    // Usamos o endpoint raiz que não exige autenticação complexa para teste de ping.
+    const urlGithub = "https://api.github.com/";
+    const opcoes = {
+      muteHttpExceptions: true,
+      headers: {
+        "Accept": "application/vnd.github+json"
+      }
+    };
+    
+    const response = UrlFetchApp.fetch(urlGithub, opcoes);
+    const code = response.getResponseCode();
+    
+    // Se recebermos 200 (OK) ou 401 (Unauthorized), a rede está aberta.
+    if (code === 200 || code === 401) {
+      status.apiAcessivel = true;
+      console.log(`✅ Conectividade com GitHub estabelecida. Status: ${code}`);
+    } else {
+      status.apiAcessivel = false;
+      console.warn(`⚠️ GitHub retornou status inesperado: ${code}`);
+    }
+
+    return status;
+
+  } catch (e) {
+    status.erro = `ERRO_CRITICO_AMB_001: ${e.message}`;
+    
+    // Log detalhado para rastreamento (Clean Code: erros devem ser informativos).
+    console.error(`[DIAGNÓSTICO] Falha ao validar ambiente: ${status.erro}`);
+    
+    // Se o erro for 'Access Denied', o desenvolvedor deve verificar se a API do Apps Script 
+    // está ativa em https://script.google.com/home/settings
+    return status;
+  }
+}

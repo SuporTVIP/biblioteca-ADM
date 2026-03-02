@@ -100,32 +100,37 @@ function SIMULAR_ENTRADA_WPP() {
     },
     // Texto que passa nos filtros
     body: `
-Programa: Smiles
-
-Origem 🛫 Salvador
-Destino 🛬 Paris
-
-➡ 14/11 - 86.500 milhas
-⬅ 23/11 - 90.800 milhas  
-+ taxas aeroportuárias
-
-Disponibilidades - IDA
-
-Outubro: 26
-Novembro: 7, 14, 28, 30
-
-Disponibilidades - VOLTA
-
-Novembro: 11, 18, 23, 25
+🚨 MACEIO ✈️ LOS ANGELES 🇺🇸
 
 
-⚠ Cuuida! As disponibilidades dessas tarifas podem acabar em dois palitos, visse!?
+Companhia: LATAM
+Programa de Milhas: LATAM
 
-Atalho para emissão https://shre.ink/ANaV
+🛫 Ida: 45.389 milhas + taxas
+🛬 Volta: 53,922 milhas + taxas
 
-Grupo de Emissões do @milhasnordestinas
-hub.la/g/gpKtrMCRH3bILwv65KNg
-    `,
+💎 Valor IDA e VOLTA em R$:
+
+💰 R$ 2.482,78 + taxas, comprando milhas em promoções da LATAM.
+💰 R$ 2.780,71 + taxas, preço médio para emissão no balcão de milhas.
+💰 R$ 3.078,64 + taxas, para emissão na Milhas VIP 💎. 😎
+
+🗓️ Datas
+
+🛫 Ida: 03/06/2026, 06/06/2026, 10/06/2026, 13/06/2026
+🛬 Retorno: 10/06/2026, 13/06/2026, 20/06/2026, 23/06/2026
+
+😎 Compre no pix/cartão (Agência do Alerta): 👇  
+https://wa.me/message/RGVHW7XGHFUDC1
+
+✅ Compre com suas próprias milhas:  
+
+
+
+https://www.latamairlines.com/br/pt
+⚠️ Os valores informados acima podem variar conforme a disponibilidade de assentos promocionais.
+
+❌ Preço médio para esse voo: R$ 4.550,00`,
     id: {
       fromMe: false, // Importante: garante que não é auto-envio
       remote: idGrupoOrigem,
