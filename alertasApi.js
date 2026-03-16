@@ -59,6 +59,7 @@ function enviarPushParaAtivos(dadosPush) {
 
   data.forEach((row, index) => {
     // row[7] é a Coluna H (Status ATIVO)
+    // TODO: Substituir índices fixos (7, 10, 13) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
     if (row[7] === "ATIVO") {
       const tokenMobile = row[10] ? row[10].toString().trim() : ""; // Coluna K (Índice 10)
       const tokenWeb = row[13] ? row[13].toString().trim() : "";    // Coluna N (Índice 13)

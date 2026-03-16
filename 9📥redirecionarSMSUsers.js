@@ -31,6 +31,7 @@ function processarSmsVindoApp(data) {
     const lastRow = sheet.getLastRow();
     
     // Lê da Coluna A[0] até a M[12]
+    // TODO: Substituir mapeamento fixo por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
     const range = sheet.getRange(2, 1, lastRow - 1, 13).getValues(); 
     
     let userFound = false;
@@ -40,6 +41,7 @@ function processarSmsVindoApp(data) {
       let row = range[i];
       
       // 🚀 2. O TRATOR DE LIMPEZA NOS DADOS DA PLANILHA
+      // TODO: Substituir índices fixos (2, 3, 4, 5, 7, 8) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
       let dbEmail  = String(row[2] || "").trim().toLowerCase(); 
       let slot1    = String(row[3] || "").trim();               
       let slot2    = String(row[4] || "").trim();               

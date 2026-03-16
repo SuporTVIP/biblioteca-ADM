@@ -2,6 +2,7 @@
 
 // LISTA DE ABAS
 const aba = {
+  // TODO: Implementar Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado para esta aba
   CONTROLE_ACESSO: 'CONTROLE_ACESSO',
   DEBUG_WPP: 'DEBUG_WPP',
   CONFIGURACOES: 'CONFIGURAÇÕES',

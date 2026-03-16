@@ -13,10 +13,12 @@ function limparDispositivosInativos() {
   const agora = new Date();
   const limiteInatividade = 3 * 60 * 60 * 1000 + 1; // mais de 12 horas
   
+  // TODO: Substituir mapeamento fixo (coluna 4) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
   const range = abaControle.getRange(2, 4, lastRow - 1, 7);
   const valores = range.getValues();
   
   for (let i = 0; i < valores.length; i++) {
+    // TODO: Substituir índices fixos (0, 1, 6) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
     let slot1 = valores[i][0].toString(); // Coluna D
     let slot2 = valores[i][1].toString(); // Coluna E
     let ultimaData = valores[i][6]; // Coluna J (Último Pulso)

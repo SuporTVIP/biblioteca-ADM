@@ -13,10 +13,12 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenW
     if (lastRow < 2) return { status: "error", message: "Nenhuma licença cadastrada no sistema." };
     
     // ✅ CORRIGIDO: Começa na linha 2, COLUNA 2 (B), pega até o final, varrendo 8 colunas (B até I)
+    // TODO: Substituir mapeamento fixo (coluna 2, 8 colunas) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
     const range = abaControle.getRange(2, 2, lastRow - 1, 8); 
     const valores = range.getValues();
     
     for (let i = 0; i < valores.length; i++) {
+      // TODO: Substituir índices fixos (0 a 7) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
       let usuario    = (valores[i][0]|| "").toString().trim() ; // Coluna B
       let dbEmail    = (valores[i][1]|| "").toString().trim().toLowerCase(); // Coluna C
       let slot1      = (valores[i][2]|| "").toString(); // Coluna D
@@ -43,7 +45,7 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenW
 
         // 🚀 LINHA ADICIONADA: Registra o pulso de acesso na Coluna J (10)
         // Isso acontece sempre que um usuário válido tenta entrar ou renovar a sessão
-       // 🚀 LINHA ADICIONADA: Registra o pulso de acesso na Coluna J (10)
+        // TODO: Substituir índice fixo (10) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
         abaControle.getRange(rowIndex, 10).setValue(new Date());
         
         // 🚀 O NOVO PAYLOAD COM OS DADOS EXTRAS
@@ -57,21 +59,25 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenW
 
         // 🚀 Ajustado para usar as variáveis corretas da sua função
         if (fcmToken && fcmToken !== "") {
+            // TODO: Substituir índice fixo (11) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
             abaControle.getRange(rowIndex, 11).setValue(fcmToken); // Salva na Coluna K
         }
 
         // 🚀 NOVO: Salva na Coluna N (14) (Token Web)
         if (fcmTokenWeb && fcmTokenWeb !== "") {
+            // TODO: Substituir índice fixo (14) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
             abaControle.getRange(rowIndex, 14).setValue(fcmTokenWeb); 
         }
 
         if (slot1 === deviceId || slot2 === deviceId) return sucessoRetorno;
         
         if (slot1 === "") {
+          // TODO: Substituir índice fixo (4) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
           abaControle.getRange(rowIndex, 4).setValue(deviceId); 
           return sucessoRetorno;
         }
         if (slot2 === "") {
+          // TODO: Substituir índice fixo (5) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
           abaControle.getRange(rowIndex, 5).setValue(deviceId); 
           return sucessoRetorno;
         }
@@ -103,10 +109,12 @@ function removerLicencaDispositivo(deviceId) {
     if (lastRow < 2) return { status: "error", message: "Planilha vazia." };
     
     // Lê apenas as colunas D e E (Slots 1 e 2)
+    // TODO: Substituir mapeamento fixo (coluna 4) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
     const range = abaControle.getRange(2, 4, lastRow - 1, 2); 
     const valores = range.getValues();
     
     for (let i = 0; i < valores.length; i++) {
+      // TODO: Substituir índices fixos (0, 1) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
       let slot1 = valores[i][0].toString();
       let slot2 = valores[i][1].toString();
       
@@ -114,11 +122,13 @@ function removerLicencaDispositivo(deviceId) {
 
       // Se achou o Device ID no Slot 1, apaga.
       if (slot1 === deviceId) {
+        // TODO: Substituir índice fixo (4) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
         abaControle.getRange(rowIndex, 4).clearContent(); 
         return { status: "success", message: "Vaga 1 liberada." };
       }
       // Se achou no Slot 2, apaga.
       if (slot2 === deviceId) {
+        // TODO: Substituir índice fixo (5) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
         abaControle.getRange(rowIndex, 5).clearContent(); 
         return { status: "success", message: "Vaga 2 liberada." };
       }
@@ -211,6 +221,7 @@ function registrarTokenFCM(e) {
 
   // Evita duplicados: Se o token já existe, só atualiza a data
   for (let i = 1; i < data.length; i++) {
+    // TODO: Substituir índices fixos (2, 1) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
     if (data[i][2] === token) {
       sheet.getRange(i + 1, 1).setValue(new Date());
       encontrado = true;
