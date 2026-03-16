@@ -100,37 +100,32 @@ function SIMULAR_ENTRADA_WPP() {
     },
     // Texto que passa nos filtros
     body: `
-🚨 MACEIO ✈️ LOS ANGELES 🇺🇸
+Programa: smiles
+ 
+Origem 🛫 SAO PAULO
+Destino 🛬 RIO GRANDE DO SUL
 
+➡ 19/05 - 20.500 milhas
+⬅ 27/05 - 13.500 milhas
++ taxas aeroportuárias
 
-Companhia: LATAM
-Programa de Milhas: LATAM
+Disponibilidades - IDA
 
-🛫 Ida: 45.389 milhas + taxas
-🛬 Volta: 53,922 milhas + taxas
+Maio: 5, 7, 11, 13, 18, 19, 20, 25, 26
 
-💎 Valor IDA e VOLTA em R$:
+Disponibilidades - VOLTA 
+s
+Maio: 6, 7, 11, 13, 14, 18, 27
 
-💰 R$ 2.482,78 + taxas, comprando milhas em promoções da LATAM.
-💰 R$ 2.780,71 + taxas, preço médio para emissão no balcão de milhas.
-💰 R$ 3.078,64 + taxas, para emissão na Milhas VIP 💎. 😎
+> Tarifa com desconto para o nível Diamante. Todos os outros níveis também possuem descontos proporcionais. Esteja logado antes de realizar a pesquisa. O desconto é aplicado automaticamente.
 
-🗓️ Datas
+⚠ Ei, cuida, visse! As tarifas e disponibilidades podem acabar em dois palitos. 
 
-🛫 Ida: 03/06/2026, 06/06/2026, 10/06/2026, 13/06/2026
-🛬 Retorno: 10/06/2026, 13/06/2026, 20/06/2026, 23/06/2026
+Atalho para emissão: https://abre.ai/oX54
 
-😎 Compre no pix/cartão (Agência do Alerta): 👇  
-https://wa.me/message/RGVHW7XGHFUDC1
-
-✅ Compre com suas próprias milhas:  
-
-
-
-https://www.latamairlines.com/br/pt
-⚠️ Os valores informados acima podem variar conforme a disponibilidade de assentos promocionais.
-
-❌ Preço médio para esse voo: R$ 4.550,00`,
+Grupo de Emissões do @milhasnordestinas
+hub.la/g/gpKtrMCRH3bILwv65KNg
+    `,
     id: {
       fromMe: false, // Importante: garante que não é auto-envio
       remote: idGrupoOrigem,

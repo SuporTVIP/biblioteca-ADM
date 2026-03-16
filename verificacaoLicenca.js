@@ -2,7 +2,7 @@
  * Gerencia o Login e Slots de Dispositivos (Máximo 2)
  * Baseado na aba: CONTROLE_ACESSO (Linha 2 - Usuário Principal)
  */
-function verificarLicencaDispositivo(deviceId, token, email, fcmToken) {
+function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenWeb) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(5000); 
@@ -21,12 +21,12 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken) {
       let dbEmail    = (valores[i][1]|| "").toString().trim().toLowerCase(); // Coluna C
       let slot1      = (valores[i][2]|| "").toString(); // Coluna D
       let slot2      = (valores[i][3]|| "").toString(); // Coluna E
-      let dbToken    = (valores[i][4]|| "").toString().trim(); // Coluna F
+      let dbToken    = (valores[i][4]|| "").toString().trim().toUpperCase(); // Coluna F
       let status     = (valores[i][6]|| "").toString(); // Coluna H
       let idPlanilha = (valores[i][7]|| "").toString().trim(); // Coluna I
       
-      let reqEmail =   (email || "").toString().trim().toLowerCase(); // Coluna F
-      let reqToken =   (token|| "").toString().trim(); // Coluna F
+      let reqEmail =   (email || "").toString().trim().toLowerCase(); // Coluna 
+      let reqToken =   (token|| "").toString().trim().toUpperCase(); // Coluna 
       
       // Formata a data de vencimento (Coluna G)
       let rawVencimento = valores[i][5];
@@ -43,6 +43,7 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken) {
 
         // 🚀 LINHA ADICIONADA: Registra o pulso de acesso na Coluna J (10)
         // Isso acontece sempre que um usuário válido tenta entrar ou renovar a sessão
+       // 🚀 LINHA ADICIONADA: Registra o pulso de acesso na Coluna J (10)
         abaControle.getRange(rowIndex, 10).setValue(new Date());
         
         // 🚀 O NOVO PAYLOAD COM OS DADOS EXTRAS
@@ -57,6 +58,11 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken) {
         // 🚀 Ajustado para usar as variáveis corretas da sua função
         if (fcmToken && fcmToken !== "") {
             abaControle.getRange(rowIndex, 11).setValue(fcmToken); // Salva na Coluna K
+        }
+
+        // 🚀 NOVO: Salva na Coluna N (14) (Token Web)
+        if (fcmTokenWeb && fcmTokenWeb !== "") {
+            abaControle.getRange(rowIndex, 14).setValue(fcmTokenWeb); 
         }
 
         if (slot1 === deviceId || slot2 === deviceId) return sucessoRetorno;
@@ -179,4 +185,42 @@ function getAccessToken() {
     console.error("❌ Falha crítica na criptografia JWT:", e.toString());
     return null;
   }
+}
+
+/**
+ * Recebe o Token FCM do dispositivo e salva na planilha.
+ * Chamado pelo Flutter via POST ou GET action=REGISTER_TOKEN
+ */
+function registrarTokenFCM(e) {
+  const token = e.parameter.token;
+  const email = e.parameter.email || "usuario_app"; // Se você tiver login depois
+  
+  if (!token) return { status: "error", message: "Token ausente" };
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("CONTROLE_ACESSO");
+  
+  // Cria a aba se não existir
+  if (!sheet) {
+    sheet = ss.insertSheet("CONTROLE_ACESSO");
+    sheet.appendRow(["DATA_REGISTRO", "USUARIO", "TOKEN_FCM", "STATUS"]);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  let encontrado = false;
+
+  // Evita duplicados: Se o token já existe, só atualiza a data
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2] === token) {
+      sheet.getRange(i + 1, 1).setValue(new Date());
+      encontrado = true;
+      break;
+    }
+  }
+
+  if (!encontrado) {
+    sheet.appendRow([new Date(), email, token, "ATIVO"]);
+  }
+
+  return { status: "success", message: "Token registrado com sucesso" };
 }

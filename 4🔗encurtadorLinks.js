@@ -1,5 +1,5 @@
 function criarLinkCurto(linkOriginal, nomeBaseOuSlug) {
-  var slugLimpo = nomeBaseOuSlug.toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+  var slugLimpo = limparNomeLink(nomeBaseOuSlug);
   var slugFinal = gerarSlugAnalytics(slugLimpo);
 
   var payload = { 
@@ -66,7 +66,7 @@ function gerarSlugAnalytics(chaveEmpresa) {
 // ============================================================================
 // 3️⃣ UTILITÁRIO DE LIMPEZA
 // ============================================================================
-function limparNome(texto) {
+function limparNomeLink(texto) {
   return texto.toString().toLowerCase()
     .replace(/\s+/g, '')           
     .replace(/[àáâãäå]/g, "a")

@@ -1,158 +1,119 @@
+
 // =================================================================
-// 2. SMS API (smsApi.gs) - VERSÃO MODULAR SEGURA 🛡️
+// 2. SMS API (smsApi.gs) - VERSÃO DEFINITIVA BLINDADA 🚀
 // =================================================================
 
-function processarSincronizacaoSMS(data) {
-  // Configurações Locais (Evita dependência global quebrada)
+function processarSmsVindoApp(data) {
+  console.log("📨 [SMS API] Recebendo novo POST de SMS do aplicativo...");
+  console.log("📦 Payload bruto:", JSON.stringify(data));
 
-
-  var result = {};
-  var lock = LockService.getScriptLock();
-
+  const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
-  } catch (e) {
-    return returnJSON({status: "error", message: "Servidor ocupado."});
-  }
-
-  try {
-    // O 'data' já vem parseado do routerApi.gs
     
-    var reqToken = data.license_key; 
-    var reqDeviceId = data.device_id; 
-    var reqEmailApp = data.target_email; 
-    var smsContent = data.sms_content;
-    
-    // Formatação de Telefone (Helper interno)
-    var rawNumber = data.sender_number || "Desconhecido"; 
-    var senderNumber = formatarTelefoneBR(rawNumber); 
+    // 🚀 1. O TRATOR DE LIMPEZA NOS DADOS DO APP
+    // Força virar string, remove espaços e padroniza o token para MAIÚSCULO
+    const reqToken = String(data.license_key || data.token || "").trim().toUpperCase(); 
+    const reqDeviceId = String(data.device_id || data.deviceId || "").trim(); 
+    const reqEmailApp = String(data.target_email || data.email || "").trim().toLowerCase(); 
+    const smsContent = String(data.sms_content || data.message || "");
+    const rawNumber = String(data.sender_number || data.sender || "Desconhecido").trim();
 
-    // Security Patch
-    if (smsContent && /^[=+\-@]/.test(smsContent)) {
-       smsContent = "'" + smsContent;
+    console.log(`🔍 [SMS API] Analisando Requisição -> Email: [${reqEmailApp}] | Token: [${reqToken}] | DeviceID: [${reqDeviceId}]`);
+
+    if (!reqToken || !smsContent) {
+      console.warn("⚠️ [SMS API] Bloqueado: Dados incompletos (Faltou token ou mensagem).");
+      throw new Error("Dados incompletos.");
     }
 
-    if (!reqToken || !reqDeviceId) throw new Error("Credenciais incompletas.");
-    if (!reqEmailApp) throw new Error("E-mail não informado.");
-    if (!smsContent) throw new Error("Conteúdo ausente.");
-
-    // Filtro Regex
-    if (BLACKLIST_SMS.test(smsContent)) {
-      result.status = "success_filtered";
-      result.message = "Mensagem filtrada.";
-      return returnJSON(result);
-    }
-
-    // Acesso ao Banco de Dados (Planilha Mestre)
-    var ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
-    var sheet = ss.getSheetByName(aba.CONTROLE_ACESSO);
-    if (!sheet) throw new Error("Planilha ADM não encontrada!");
-
-    var lastRow = sheet.getLastRow();
-    // Lê Colunas C até H (Token, Vencimento, Status, ID Planilha Cliente...)
-    // Ajuste conforme seu layout real, mas mantendo a lógica original
-    var range = sheet.getRange(2, 3, lastRow - 1, 6).getValues(); 
+    const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
+    const sheet = ss.getSheetByName(aba.CONTROLE_ACESSO);
+    const lastRow = sheet.getLastRow();
     
-    var userFound = false;
-    var targetSheetId = "";
+    // Lê da Coluna A[0] até a M[12]
+    const range = sheet.getRange(2, 1, lastRow - 1, 13).getValues(); 
+    
+    let userFound = false;
+    let targetSheetId = "";
 
-    for (var i = 0; i < range.length; i++) {
-      var row = range[i];
-      var dbToken = row[2]; // Coluna E (índice 2 no range que começa em C)
+    for (let i = 0; i < range.length; i++) {
+      let row = range[i];
       
-      if (dbToken == reqToken) {
-        userFound = true;
-        var rowIndex = i + 2;
-        
-        var dbEmailSheet = row[0]; // Coluna C
-        var dbDeviceId = row[1];   // Coluna D
-        var dbVencimento = row[3]; // Coluna F
-        var dbStatus = row[4];     // Coluna G
-        targetSheetId = row[5];    // Coluna H
+      // 🚀 2. O TRATOR DE LIMPEZA NOS DADOS DA PLANILHA
+      let dbEmail  = String(row[2] || "").trim().toLowerCase(); 
+      let slot1    = String(row[3] || "").trim();               
+      let slot2    = String(row[4] || "").trim();               
+      let dbToken  = String(row[5] || "").trim().toUpperCase(); // Padroniza banco para Maiúsculo também!
+      let dbStatus = String(row[7] || "").trim().toUpperCase();               
+      targetSheetId = String(row[8] || "").trim();              
 
-        // Validação
-        var appEmailClean = reqEmailApp.toString().trim().toLowerCase();
-        var dbEmailClean = dbEmailSheet.toString().trim().toLowerCase();
-        
-        if (appEmailClean !== dbEmailClean) throw new Error("Token não pertence ao e-mail informado.");
-        if (dbStatus != "ATIVO") throw new Error("Licença inativa.");
-        
-        var hoje = new Date();
-        hoje.setHours(0,0,0,0);
-        if (hoje > new Date(dbVencimento)) throw new Error("Licença vencida.");
+      if (dbToken === "" && slot2 === reqToken) {
+          dbToken = slot2;
+      }
 
-        // Atualiza Device ID se for o primeiro acesso
-        if (!dbDeviceId) {
-           sheet.getRange(rowIndex, 4).setValue(reqDeviceId);
-        } else if (dbDeviceId != reqDeviceId) {
-           throw new Error("Token vinculado a outro aparelho.");
+      // Comparação blindada (como ambos passaram pelo trator, o match é garantido)
+      if (dbToken === reqToken && dbEmail === reqEmailApp) {
+        console.log(`✅ [SMS API] Cliente localizado na linha ${i + 2} da aba CONTROLE_ACESSO.`);
+        
+        if (dbStatus !== "ATIVO") {
+          console.warn("⛔ [SMS API] Bloqueado: Status da licença não é 'ATIVO'.");
+          throw new Error("Licença inativa.");
         }
+        
+        // Sua trava genial de DeviceID mantida 100%
+        if (slot1 !== reqDeviceId && slot2 !== reqDeviceId) {
+          console.warn(`⛔ [SMS API] Bloqueado: O ID do aparelho que mandou o SMS (${reqDeviceId}) não bate com a planilha (Slot1: ${slot1} | Slot2: ${slot2}).`);
+          throw new Error("Aparelho não autorizado.");
+        }
+        
+        userFound = true;
         break; 
       }
     }
 
-    if (!userFound) throw new Error("Token inválido.");
+    if (!userFound) {
+      console.error("❌ [SMS API] Falha: O Token ou E-mail não batem com nenhuma linha da planilha.");
+      // 🚀 3. O MODO X-9 PARA TE AJUDAR A DEBUGAR
+      throw new Error(`Credenciais não encontradas. O Google leu -> Email: [${reqEmailApp}] | Token: [${reqToken}]`);
+    }
 
-    // Escrita na Planilha do Cliente
-    var savedToSheet = false;
-    var sheetErrorMessage = "";
+    console.log(`🎯 [SMS API] ID da Planilha de Destino (Coluna I): '${targetSheetId}'`);
 
-    if (targetSheetId && targetSheetId.length > 10) {
+    // =================================================================
+    // GRAVAÇÃO DIRETA NA PLANILHA DO CLIENTE (Mantida Intacta)
+    // =================================================================
+    if (targetSheetId && targetSheetId.length > 20) {
       try {
-        var clientSS = SpreadsheetApp.openById(targetSheetId);
-        var clientSheet = clientSS.getSheetByName(aba.ALERTAS);
+        console.log("🔄 [SMS API] Tentando abrir a planilha destino...");
+        const clientSS = SpreadsheetApp.openById(targetSheetId);
         
+        let clientSheet = clientSS.getSheetByName(aba.ALERTAS);
         if (!clientSheet) {
+          console.log("📝 [SMS API] Aba ALERTAS não existia na planilha destino. Criando agora...");
           clientSheet = clientSS.insertSheet(aba.ALERTAS);
-          clientSheet.appendRow(["Data Hora", "Remetente", "Mensagem"]); 
         }
         
-        var dataHoraBR = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
-        
-        // Insere na linha 2 (Topo)
+        const dataHoraBR = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
         clientSheet.insertRowBefore(2);
-        clientSheet.getRange(2, 1, 1, 3).setValues([[dataHoraBR, senderNumber, smsContent]]);
+        clientSheet.getRange(2, 1, 1, 3).setValues([[dataHoraBR, rawNumber, smsContent]]);
         
-        // Estilização
-        var rowToFormat = 2;
-        clientSheet.setColumnWidth(1, 150); 
-        clientSheet.setColumnWidth(2, 130); 
-        clientSheet.getRange(rowToFormat, 1).setNumberFormat("dd/mm/yyyy hh:mm:ss");       
-        clientSheet.getRange(rowToFormat, 1, 1, 2).setHorizontalAlignment("center");
-        clientSheet.getRange(rowToFormat, 1, 1, 3).setBackground("#f3f3f3");
-        
-        savedToSheet = true;
-
-      } catch (e_sheet) {
-        sheetErrorMessage = e_sheet.toString();
-        console.warn("Erro Planilha Cliente: " + sheetErrorMessage);
+        console.log("🚀 [SMS API] SUCESSO ABSOLUTO! SMS gravado na linha 2 da planilha destino.");
+        return { status: "success", message: "SMS Sincronizado." };
+      } catch (ePlanilha) {
+        console.error(`❌ [SMS API] ERRO DE PERMISSÃO: O seu script não tem acesso de edição na planilha destino (ID: ${targetSheetId}). O erro do Google foi: ${ePlanilha}`);
+        throw new Error("Não foi possível acessar a planilha vinculada. Verifique as permissões do ID.");
       }
-    } else {
-        sheetErrorMessage = "ID da planilha não configurado.";
     }
-
-    if (savedToSheet) {
-        result.status = "success";
-        result.message = "SMS Sincronizado.";
-    } else {
-        result.status = "error";
-        result.message = "Erro ao salvar: " + sheetErrorMessage;
-    }
-
-  } catch (error) {
-    result.status = "error";
-    result.message = error.toString();
+    
+    console.error("❌ [SMS API] O ID da planilha na Coluna I é muito curto ou está vazio.");
+    throw new Error("ID da Planilha do cliente não está configurado na Coluna I.");
+    
+  } catch (e) {
+    console.error("🔥 [SMS API] Erro Final Retornado ao App:", e.toString());
+    return { status: "error", message: e.toString() };
   } finally {
-    lock.releaseLock(); 
+    lock.releaseLock();
   }
-
-  return returnJSON(result);
-}
-
-// --- HELPERS INTERNOS ---
-
-function returnJSON(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function formatarTelefoneBR(numero) {

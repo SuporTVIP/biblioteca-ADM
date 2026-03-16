@@ -51,16 +51,16 @@ function processarMarketingRedirecionamento(textoBruto, fromId) {
     corpoOferta = transformarDatasParaLayoutVIP(corpoOferta); 
     
     const linkLongo = gerarLinkBusca(dados);
-    const nomeBaseLink = dados.programa || "oferta"; 
+    const nomeBaseLink = dados.programa ? limparNomeLink(dados.programa) : "oferta";
     const linkCurto = criarLinkCurto(linkLongo, nomeBaseLink);
 
     // D. Montagem
-    const mensagemFinal = montarTemplateVIP(dados, corpoOferta, linkCurto, dadosTaxasRaw, dadosPrecosRaw, templateRaw, templateWpp, margemEmissao, templateBalcao);
+    const pacotaoMensagens = montarTemplateVIP(dados, corpoOferta, linkCurto, dadosTaxasRaw, dadosPrecosRaw, templateRaw, templateWpp, margemEmissao, templateBalcao);
     
-// E. Envio
+    // E. Envio
     console.log(`✅ Oferta Válida! Enviando...`);
-    enviarMensagemWppConnect(configGeral.ID_GRUPO_VIP_DESTINO, mensagemFinal);
-    salvarNaPlanilha(mensagemFinal, configGeral.ID_GRUPO_VIP_DESTINO, linkCurto);
+    enviarMensagemWppConnect(configGeral.ID_GRUPO_VIP_DESTINO, pacotaoMensagens.vip);
+    salvarNaPlanilha(pacotaoMensagens.vip, configGeral.ID_GRUPO_VIP_DESTINO, linkCurto, pacotaoMensagens.balcao, pacotaoMensagens.taxas);
 
   } catch (e) {
     console.error("🔥 Erro Bot:", e.message);
@@ -129,6 +129,7 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
   // =================================================================
   let blocoPrecos = "";
   let valorBalcaoNumerico = 0;
+  let mensagemParaOApp = "";
 
   if (dados.milhas > 0) {
     const resultado = calcularPrecosMemoria(dados.programa, dados.milhas, dadosPrecos);
@@ -155,6 +156,7 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
                                .replace(/{VALOR}/g, totalCliente.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'}))
                                .replace(/{CPM}/g, cpmUsado.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}))
                                .replace(/{VALOR_TOTAL}/g, valorSemTaxas.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'}));
+            mensagemParaOApp = msgBalcao; // <--- ADICIONE ESTA LINHA AQUI
 
         // 3. Monta e encurta o link (SEM número fixo, para você poder enviar pro Grupo)
           const linkZapBalcao = `https://api.whatsapp.com/send?text=${encodeURIComponent(msgBalcao)}`;
@@ -202,7 +204,7 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
       const linkBalcaoLongo = scriptUrl + paramsBalcao;
       
       // 2. Encurta o link (opcional, mas recomendado)
-      const slugBalcao = "vender-" + (dados.programa || "milhas");
+      const slugBalcao = "vender";
       const linkBalcaoCurto = criarLinkCurto(linkBalcaoLongo, slugBalcao);
 
       // 3. Adiciona ao Visual
@@ -210,7 +212,7 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
       blocoEmissao += `\n\n💼 *Tem milhas e quer vender?*\n🔴 *Vender para Agência:* ${linkBalcaoCurto}`;
 
       // Define um nome para o link (ex: emitir-latam)
-      const slugEmissao = "emitir" + (dados.programa || "oferta");
+      const slugEmissao = "emitir";
 
       // Usa a SUA função existente para encurtar
       const linkZapCurto = criarLinkCurto(linkZapFinal, slugEmissao);
@@ -319,12 +321,17 @@ function montarTemplateVIP(dados, corpo, linkPronto, dadosTaxas, dadosPrecos, te
   msgFinal = msgFinal.replace(/{ORIGEM}/g,  (dados.origem  || "BRASIL").toLocaleUpperCase('pt-BR'));
   msgFinal = msgFinal.replace(/{DESTINO}/g, (dados.destino || "MUNDO").toLocaleUpperCase('pt-BR'));
   msgFinal = msgFinal.replace(/{LINK}/g, linkPronto || "https://familha.suportvip.com");
+
+  let taxasAeroString = valorTaxas.toString();
   
   // Injeta o miolo calculado
   msgFinal = msgFinal.replace(/{CORPO}/g, corpoDinamico);
-
   console.log("[TEMPLATE] Mensagem montada com sucesso.");
-  return msgFinal;
+  return { 
+    vip: msgFinal, 
+    balcao: mensagemParaOApp,
+    taxas: taxasAeroString
+  };
 }
 
 // Versão Otimizada (Recebe Array, não abre planilha)
@@ -568,260 +575,154 @@ function gerarLinkBusca(dados) {
   return obterLinkGenerico(dados.programa);
 }
 
-/**
- * Função Principal: Conecta na API externa e retorna o link curto.
- * ATUALIZAÇÃO: Usa lógica de contador sequencial e fallback seguro.
- */
-function criarLinkCurto(linkOriginal, nomeBaseOuSlug) {
-
-  // 1. VALIDAÇÃO BÁSICA
-  // Se não tiver link ou já for encurtado, devolve o original e encerra.
-  if (!linkOriginal || linkOriginal.trim() === "" || linkOriginal.includes("familha.suportvip.com")) {
-    return linkOriginal;
-  }
-
-  // 2. DEFINIÇÃO DO SLUG
-  var slugFinal = nomeBaseOuSlug;
-  
-  // Se não tiver hífen OU for curto, entendemos que é um NOME BASE e geramos a sequência.
-  if (!slugFinal || slugFinal.indexOf('-') === -1 || slugFinal.length < 10) {
-      // Usa a nova função geradora robusta
-      slugFinal = gerarIdentificadorUnicoDiario(slugFinal || "oferta"); 
-  }
-
-  // 3. MONTAGEM DA REQUISIÇÃO
-  var payload = { 
-    'action': 'fami_criar', 
-    'chave': controlAcess.SENHA_ENCURTADOR, 
-    'slug': slugFinal, 
-    'link': linkOriginal 
-  };
-
-  var options = { 
-    'method': 'post', 
-    'payload': payload, 
-    'muteHttpExceptions': true 
-  };
-
-  // 4. CHAMADA DE REDE COM FALLBACK
-  try {
-    // Pequena pausa (Jitter) para evitar flood na API
-    Utilities.sleep(Math.floor(Math.random() * 100) + 50);
-    
-    var response = UrlFetchApp.fetch(controlAcess.URL_ENCURTADOR, options);
-    var json = JSON.parse(response.getContentText());
-
-    if (json.success) { 
-      // SUCESSO: Remove barras invertidas e retorna link curto
-      return json.data.link_final.replace(/\\\//g, "/");
-    } else { 
-      // ERRO DA API (Ex: Slug duplicado): Loga e devolve o ORIGINAL
-      console.warn("⚠️ API Encurtador recusou: " + json.data + " | Usando link original.");
-      return linkOriginal; 
-    }
-
-  } catch (e) {
-    // ERRO DE CONEXÃO: Loga e devolve o ORIGINAL
-    console.error("❌ Falha crítica no encurtador: " + e.toString());
-    return linkOriginal;
-  }
-}
-
-/**
- * Gera um slug único sequencial (Ex: promocao-livelo-250101-1).
- * Usa LockService para evitar duplicidade se dois bots rodarem juntos.
- */
-function gerarIdentificadorUnicoDiario(nomeBase) {
-  // 1. LOCKSERVICE (Sinal de Trânsito)
-  var lock = LockService.getScriptLock();
-  
-  try {
-    lock.waitLock(10000); // Espera até 10s por exclusividade
-  } catch (e) {
-    // Se estourar o tempo, usa timestamp simples para não travar
-    console.error("[LOCK TIMEOUT] Usando fallback de data.");
-    return nomeBase + "-" + new Date().getTime(); 
-  }
-
-  try {
-    // 2. LÓGICA DE INCREMENTO
-    var props = PropertiesService.getScriptProperties();
-    var hoje = new Date();
-    
-    // Formata DDMMAAAA
-    var dia = ("0" + hoje.getDate()).slice(-2);
-    var mes = ("0" + (hoje.getMonth() + 1)).slice(-2);
-    var ano = hoje.getFullYear();
-    var dataFormatada = dia + mes + ano;
-
-    var ultimaData = props.getProperty("ULTIMA_DATA");
-    var contador = Number(props.getProperty("CONTADOR_DIARIO")) || 0;
-
-    if (ultimaData !== dataFormatada) {
-      contador = 1; // Virou o dia, reseta
-      props.setProperty("ULTIMA_DATA", dataFormatada);
-    } else {
-      contador = contador + 1; // Mesmo dia, incrementa
-    }
-    
-    props.setProperty("CONTADOR_DIARIO", contador.toString());
-
-    // 3. LIMPEZA DO NOME
-    var nomeLimpo = nomeBase.toString().toLowerCase()
-      .replace(/\s+/g, '-')       
-      .replace(/[^a-z0-9\-]/g, '');
-
-    // Retorna slug: latam-10022026-1
-    return nomeLimpo + "-" + dataFormatada + "-" + contador;
-
-  } catch (erro) {
-    console.error("Erro ao gerar slug sequencial: " + erro.message);
-    return nomeBase + "-" + new Date().getTime(); // Fallback final
-  } finally {
-    lock.releaseLock(); // Solta a trava
-  }
-}
-
-function salvarNaPlanilha(texto, id, linkUrl) {
+function salvarNaPlanilha(texto, id, linkUrl, msgBalcao, taxas) {
   try {
     const sheet = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM).getSheetByName(aba.ALERTAS);
     let programa = "OUTROS";
     const t = texto.toUpperCase();
     
-    // Identificação do Programa
-    if (t.includes("LATAM")) programa = "LATAM";
+    if (t.includes("LATAM"))       programa = "LATAM";
     else if (t.includes("SMILES")) programa = "SMILES";
-    else if (t.includes("AZUL")) programa = "AZUL";
+    else if (t.includes("AZUL"))   programa = "AZUL";
     
-    // Fallback de Link
     if (!linkUrl) { 
       const m = texto.match(/https?:\/\/[^\s]+/); 
-      if(m) linkUrl = m[0]; 
+      if (m) linkUrl = m[0]; 
     }
 
-// =================================================================
-    // 1. EXTRAÇÃO DE METADADOS PARA A COLUNA G (Para o App) - VERSÃO BLINDADA
-    // =================================================================
-    let trecho = "N/A";
-    let dataIda = "N/A";
-    let dataVolta = "N/A";
-    let milhas = "N/A";
-    let valorFabricado = "N/A";
-    let valorBalcao = "N/A";
-    let valorEmissao = "N/A";
-    let detalhes = ""; // <-- NOVA VARIÁVEL PARA O APP
+    // ── Variáveis de extração ──────────────────────────────────────────
+    let trecho             = "N/A";
+    let dataIda            = "N/A";
+    let dataVolta          = "N/A";
+    let milhas             = "N/A";
+    let valorFabricado     = "N/A";
+    let valorBalcao        = "N/A";
+    let valorEmissao       = "N/A";
+    let detalhes           = "";
+    let linkEmissaoFamilhas = "";
+    let taxasAereas        = taxas || "0";
 
-    // Extrair Trecho (Ex: Natal ✈️ Recife)
-    const matchTrecho = texto.match(/\*?([^*]+)\*?\s*✈️\s*\*?([^*]+)\*?/);
+    // ── Trecho ────────────────────────────────────────────────────────
+    const matchTrecho = texto.match(/\*?([^*\n]+)\*?\s*✈️\s*\*?([^*\n]+)\*?/);
     if (matchTrecho) {
-      // Forçamos o UPPERCASE em cada parte do trecho individualmente
-      const cidadeOrigem = matchTrecho[1].trim().toUpperCase();
-      const cidadeDestino = matchTrecho[2].trim().toUpperCase();
-      trecho = `${cidadeOrigem} - ${cidadeDestino}`;
+      trecho = `${matchTrecho[1].trim().toUpperCase()} - ${matchTrecho[2].trim().toUpperCase()}`;
     }
 
-    // Extrair Milhas
-    const matchMilhas = texto.match(/Ida:.*?\s*\*?([\d.,]+)\*?\s*(?:milhas|pontos|avios)/i);
-    if (matchMilhas) milhas = matchMilhas[1];
+    // ── Milhas (ida + volta) ──────────────────────────────────────────
+    // Função auxiliar INTERNA — vive dentro de salvarNaPlanilha, sem conflito
+    const _extrairMilhasDoBloco = (bloco) => {
+      if (!bloco) return null;
+      const padroes = [
+        /\*?([\d.]+)\*?\s*(?:milhas|pontos|avios|pts)/i,
+        /\*?([\d.]+)\s*[kK]\*?\s*(?:milhas|pontos|avios)?/i,
+        /([\d.]+)\s*(?:milhas|pontos|avios)/i,
+      ];
+      for (const p of padroes) {
+        const m = bloco.match(p);
+        if (m) return m[1];
+      }
+      return null;
+    };
 
-    // =================================================================
-    // DATAS
-    // =================================================================
-    const matchIda = texto.match(/Ida:\s*\*?(\d{2}\/\d{2})/i);
-    if (matchIda) dataIda = matchIda[1];
+    const blocoIda   = texto.match(/Ida\s*:\s*([^\n]+)/i)?.[0]   ?? '';
+    const blocoVolta = texto.match(/Volta\s*:\s*([^\n]+)/i)?.[0] ?? '';
+    const milhasIda   = _extrairMilhasDoBloco(blocoIda);
+    const milhasVolta = _extrairMilhasDoBloco(blocoVolta);
 
-    const matchVolta = texto.match(/Volta:\s*\*?(\d{2}\/\d{2})/i);
-    if (matchVolta) dataVolta = matchVolta[1];
+    if      (milhasIda && milhasVolta) milhas = `${milhasIda} + ${milhasVolta}`;
+    else if (milhasIda)                milhas = milhasIda;
+    else if (milhasVolta)              milhas = milhasVolta;
+    else {
+      const fb = texto.match(/\*?([\d.]+)\*?\s*(?:milhas|pontos|avios)/i);
+      milhas = fb ? fb[1] : "N/A";
+    }
 
-   // =================================================================
-    // DATAS FALLBACK: Se não achou, pega o primeiro dia nas Disponibilidades
-    // =================================================================
+    // ── Datas ─────────────────────────────────────────────────────────
+    const matchDataIda   = texto.match(/Ida:\s*\*?(\d{2}\/\d{2})/i);
+    if (matchDataIda)   dataIda   = matchDataIda[1];
+    const matchDataVolta = texto.match(/Volta:\s*\*?(\d{2}\/\d{2})/i);
+    if (matchDataVolta) dataVolta = matchDataVolta[1];
+
+    // Fallback datas — lê o bloco de Disponibilidades se não encontrou acima
     if (dataIda === "N/A") {
-      const blocoIda = texto.match(/Disponibilidades\s*-\s*IDA[\s\S]*?(?=\n\n|\n`|$)/i);
-      if (blocoIda) {
-        // Nova Regex blindada: Aceita asterisco antes ou depois dos dois pontos (:)
-        const matchDataIda = blocoIda[0].match(/\*?([a-zA-ZçÇ]+)\*?\s*:\s*\*?\s*(\d{1,2})/);
-        if (matchDataIda) dataIda = `${matchDataIda[2]}/${matchDataIda[1]}`;
+      const blocoDispIda = texto.match(/Disponibilidades\s*-\s*IDA[\s\S]*?(?=\n\n|\n`|$)/i);
+      if (blocoDispIda) {
+        const mdi = blocoDispIda[0].match(/\*?([a-zA-ZçÇ]+)\*?\s*:\s*\*?\s*(\d{1,2})/);
+        if (mdi) dataIda = `${mdi[2]}/${mdi[1]}`;
       }
     }
-
     if (dataVolta === "N/A") {
-      const blocoVolta = texto.match(/Disponibilidades\s*-\s*VOLTA[\s\S]*?(?=\n\n|\n`|$)/i);
-      if (blocoVolta) {
-        // Nova Regex blindada
-        const matchDataVolta = blocoVolta[0].match(/\*?([a-zA-ZçÇ]+)\*?\s*:\s*\*?\s*(\d{1,2})/);
-        if (matchDataVolta) dataVolta = `${matchDataVolta[2]}/${matchDataVolta[1]}`;
+      const blocoDispVolta = texto.match(/Disponibilidades\s*-\s*VOLTA[\s\S]*?(?=\n\n|\n`|$)/i);
+      if (blocoDispVolta) {
+        const mdv = blocoDispVolta[0].match(/\*?([a-zA-ZçÇ]+)\*?\s*:\s*\*?\s*(\d{1,2})/);
+        if (mdv) dataVolta = `${mdv[2]}/${mdv[1]}`;
       }
     }
 
-    // Extrair Valores Financeiros
-    const matchFabricado = texto.match(/Fabricado[\s:*]*(R\$\s*[\d.,]+)/i);
-    if (matchFabricado) valorFabricado = matchFabricado[1];
+    // ── Valores financeiros ───────────────────────────────────────────
+    const mFabricado = texto.match(/Fabricado[\s:*]*(R\$\s*[\d.,]+)/i);
+    if (mFabricado) valorFabricado = mFabricado[1];
 
-    const matchBalcao = texto.match(/Balcão[\s:*]*(R\$\s*[\d.,]+)/i);
-    if (matchBalcao) valorBalcao = matchBalcao[1];
+    const mBalcao = texto.match(/Balcão[\s:*]*(R\$\s*[\d.,]+)/i);
+    if (mBalcao) valorBalcao = mBalcao[1];
 
-    const matchValor = texto.match(/Emitindo com a FãMilhas.*?(R\$\s*[\d.,]+)/i);
-    if (matchValor) valorEmissao = matchValor[1];
+    const mValorEmissao = texto.match(/Emitindo com a FãMilhas.*?(R\$\s*[\d.,]+)/i);
+    if (mValorEmissao) valorEmissao = mValorEmissao[1];
 
-    // =================================================================
-    // EXTRATOR DO BLOCO DE DETALHES (Disponibilidades + Aviso)
-    // =================================================================
-    // Captura tudo a partir de "Disponibilidades - IDA" até antes de "Acesse a Oferta" ou "📲"
-    const matchDetalhes = texto.match(/(Disponibilidades\s*-\s*IDA[\s\S]*?)(?=\n*📲|\n*Acesse a Oferta|$)/i);
-    if (matchDetalhes) {
-      // Remove crases, asteriscos e underlines da formatação do WhatsApp
-      detalhes = matchDetalhes[1].replace(/[`*_]/g, "").trim();
-    }
+    // ── Link de emissão ───────────────────────────────────────────────
+    const mLinkEmissao = texto.match(/Clique para Emitir:\*?\s*(https?:\/\/[^\s]+)/i);
+    if (mLinkEmissao) linkEmissaoFamilhas = mLinkEmissao[1];
 
-// 🚀 Geração de ID Semântico para o Teste de Stress
-// Exemplo gerado: 20260226143400_SMILES_SALVADOR-PARIS
-const timestamp = Utilities.formatDate(new Date(), "GMT-3", "yyyyMMddHHmmssSSS");
-const programaLimpo = (programa || "OUTROS").toUpperCase().replace(/\s+/g, '');
-const trechoLimpo = (trecho || "N/A").toUpperCase().replace(/\s+/g, '').replace("-", "_");
+    // ── Detalhes (bloco de Disponibilidades para o app) ───────────────
+    const mDetalhes = texto.match(/(Disponibilidades\s*-\s*IDA[\s\S]*?)(?=\n*📲|\n*Acesse a Oferta|$)/i);
+    if (mDetalhes) detalhes = mDetalhes[1].replace(/[`*_]/g, "").trim();
 
-const idApp = `${timestamp}_${programaLimpo}_${trechoLimpo}`;
-    // Monta o objeto JSON com os metadados
+    // ── ID e metadados ────────────────────────────────────────────────
+    const timestamp = Utilities.formatDate(new Date(), "GMT-3", "yyyyMMddHHmmssSSS");
+    const idApp = `${timestamp}_${programa}_${trecho.replace(/\s+/g, '').replace("-", "_")}`;
+
     const metadadosJson = JSON.stringify({
-      id_app: idApp,
-      trecho: trecho,
-      data_ida: dataIda,
-      data_volta: dataVolta,
-      milhas: milhas,
+      id_app:          idApp,
+      trecho:          trecho,
+      data_ida:        dataIda,
+      data_volta:      dataVolta,
+      milhas:          milhas,
       valor_fabricado: valorFabricado,
-      valor_balcao: valorBalcao,
-      valor_emissao: valorEmissao,
-      detalhes: detalhes // <-- INSERIDO NO JSON
-
+      valor_balcao:    valorBalcao,
+      valor_emissao:   valorEmissao,
+      detalhes:        detalhes,
+      mensagem_balcao: msgBalcao || "Olá! Tenho interesse nesta emissão",
+      taxasAereas:     taxasAereas,
     });
-    
-    // =================================================================
-    // 2. INSERÇÃO NO TOPO (LINHA 2) DA PLANILHA
-    // =================================================================
-    
-    // Insere uma nova linha logo abaixo do cabeçalho
-    sheet.insertRowBefore(2);
-    
-    // Prepara o array de dados para as colunas A até G
-    // A: Mensagem | B: Programa | C: Data | D: ID | E: Link | F: Vazio | G: Metadados
-    const dadosRow = [[texto, programa, new Date(), id, linkUrl, "", metadadosJson]];
-    
-    // Grava os dados na nova linha 2
-    sheet.getRange(2, 1, 1, dadosRow[0].length).setValues(dadosRow);
-    
-    // =================================================================
-    // 3. FORMATAÇÃO DA NOVA LINHA
-    // =================================================================
-    
-    // Alinha ao meio e ativa a quebra de texto (exceto para colunas de Link e JSON)
-    sheet.getRange(2, 1, 1, 4).setVerticalAlignment("middle").setWrap(true);
-    sheet.getRange(2, 5, 1, 3).setVerticalAlignment("middle").setWrap(false); // Colunas E, F e G sem wrap
 
-    // 🚀 O GATILHO DO PUSH ENTRA AQUI! 🚀
-    // Assim que a linha 2 é criada, avisamos os celulares com a tela apagada
+    // ── Salva na planilha ─────────────────────────────────────────────
+    sheet.insertRowBefore(2);
+    sheet.getRange(2, 1, 1, 7).setValues([[
+      texto, programa, new Date(), id, linkUrl, linkEmissaoFamilhas, metadadosJson
+    ]]);
+    sheet.getRange(2, 1, 1, 4).setVerticalAlignment("middle").setWrap(true);
+    sheet.getRange(2, 5, 1, 3).setVerticalAlignment("middle").setWrap(false);
+
+    // ── Dispara push FCM com payload completo ─────────────────────────
     if (typeof enviarPushParaAtivos === 'function') {
-      console.log(`Disparando Push Ninja para: ${programa} - ${trecho}`);
-      enviarPushParaAtivos(programa, trecho);
+      console.log(`🚀 Disparando Push: ${programa} - ${trecho} | Milhas: ${milhas}`);
+      enviarPushParaAtivos({
+        idApp:               idApp,
+        programa:            programa,
+        trecho:              trecho,
+        texto:               texto,
+        linkUrl:             linkUrl,
+        dataIda:             dataIda,
+        dataVolta:           dataVolta,
+        milhas:              milhas,
+        valorFabricado:      valorFabricado,
+        valorEmissao:        valorEmissao,
+        valorBalcao:         valorBalcao,
+        detalhes:            detalhes,
+        linkEmissaoFamilhas: linkEmissaoFamilhas,
+        msgBalcao:           msgBalcao,
+        taxasAereas:         taxasAereas,
+      });
     }
 
   } catch(e) {

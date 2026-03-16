@@ -1,114 +1,128 @@
-// =======================================================
-// BUSCADOR DE ALERTAS (Corrigido para Coluna F)
-// =======================================================
 function buscarAlertasDelta(lastSyncIso) {
   const sheet = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM).getSheetByName(aba.ALERTAS);
   const data = sheet.getDataRange().getValues();
   const novos = [];
   
-  // Converte a data enviada pelo Flutter em Milissegundos
   const dataCorte = new Date(lastSyncIso).getTime();
 
   for (let i = 1; i < data.length; i++) {
-    // Converte a data da Planilha (Coluna C) em Milissegundos
     const dataLinha = new Date(data[i][2]).getTime(); 
     
-    // Se a linha for mais nova que o corte, adiciona na lista
     if (dataLinha > dataCorte) {
       let metadados = {};
       try {
          metadados = data[i][6] ? JSON.parse(data[i][6]) : {};
       } catch(e) {}
 
+      // 🚀 A MÁGICA DA BLINDAGEM DE ID ESTÁ AQUI
+      // 1. Tenta usar o ID Semântico Perfeito que o seu robô cria (ex: 20260226_AZUL_RECIFE).
+      // 2. Se for uma linha inserida na mão (sem metadados), ele cria um ID infalível
+      // misturando a data/hora exata do cadastro em milissegundos com o número da linha.
+      const idUnico = metadados.id_app ? metadados.id_app : "SYS_" + dataLinha + "_L" + i;
+
       novos.push({
+        id: idUnico, // 🚀 Usa o RG blindado aqui!
         mensagem: data[i][0] || "",
         programa: data[i][1] || "OUTROS",
         data: data[i][2],
-        id: data[i][3] || (metadados.id_app ? metadados.id_app : "ID_" + i),
         link: data[i][4] || "",
+        link_agencia: data[i][5]|| "https://api.whatsapp.com/send?phone=5583989073178",
+        taxas: metadados.taxasAereas || "N/A",
         trecho: metadados.trecho || "N/A",
         dataIda: metadados.data_ida || "N/A",
         dataVolta: metadados.data_volta || "N/A",
         milhas: metadados.milhas || "N/A",
         valorFabricado: metadados.valor_fabricado || "N/A",
-        valorEmissao: metadados.valor_emissao || "N/A",
         valorBalcao: metadados.valor_balcao || "N/A",
-        detalhes: metadados.detalhes || ""
+        valorEmissao: metadados.valor_emissao || "N/A",
+        detalhes: metadados.detalhes || "",
+        mensagemBalcao: metadados.mensagem_balcao || "N/A"
       });
     }
   }
   return novos;
 }
-
-/**
- * 🚀 DISPARADOR DE PUSH (FCM v1)
- * Percorre os tokens ativos e envia o comando de sincronização.
- */
 /**
  * 🚀 DISPARADOR DE PUSH NINJA (FCM v1) - DATA ONLY
  * Percorre os tokens ativos e envia o pacote de dados oculto para o Flutter.
  */
-function enviarPushParaAtivos(programa, trecho) {
+function enviarPushParaAtivos(dadosPush) {
   const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
-  const sheet = ss.getSheetByName('CONTROLE_ACESSO'); 
+  const sheet = ss.getSheetByName(aba.CONTROLE_ACESSO); 
   if (!sheet) return;
 
   const data = sheet.getDataRange().getValues();
   
-  const tokens = data.filter(row => row[7] === "ATIVO" && row[10] && row[10].toString().trim() !== "")
-                     .map(row => row[10]);
+  // 🚀 O NOVO MOTOR DE DISPARO DUPLO (Mobile + Web)
+  let todosTokens = [];
+  let mapaTokens = {}; // Guarda a "coordenada" do token para a faxina rápida
 
-  if (tokens.length === 0) {
+  data.forEach((row, index) => {
+    // row[7] é a Coluna H (Status ATIVO)
+    if (row[7] === "ATIVO") {
+      const tokenMobile = row[10] ? row[10].toString().trim() : ""; // Coluna K (Índice 10)
+      const tokenWeb = row[13] ? row[13].toString().trim() : "";    // Coluna N (Índice 13)
+
+      let linhaReal = index + 1; // Index 0 = Linha 1 da planilha
+
+      if (tokenMobile !== "") {
+        todosTokens.push(tokenMobile);
+        mapaTokens[tokenMobile] = { linha: linhaReal, coluna: 11 }; // 11 = K
+      }
+      
+      if (tokenWeb !== "") {
+        todosTokens.push(tokenWeb);
+        mapaTokens[tokenWeb] = { linha: linhaReal, coluna: 14 }; // 14 = N
+      }
+    }
+  });
+
+  if (todosTokens.length === 0) {
     console.log("Nenhum FCM Token ativo encontrado para envio.");
     return;
   }
 
-  // Puxa a chave do cofre UMA ÚNICA VEZ
   const tokenAcesso = getAccessToken();
   if (!tokenAcesso) {
     console.error("❌ Falha ao obter token OAuth2. Abortando disparos.");
     return;
   }
 
-  // 🚀 O NOVO PAYLOAD NINJA (SEM O BLOCO "notification")
+  // 🚀 O VERDADEIRO PAYLOAD NINJA 100% PUSH (Tudo convertido para String)
   const payloadBase = {
     "message": {
-      // 1. O TRUQUE: Manda um título na notificação, mas SEM CORPO.
-      // O Android vê isso e acorda o celular imediatamente!
-      "notification": {
-        "title": "🚨 Radar VIP Ativado"
-      },
-      // 2. Os dados reais que o seu Porteiro (Flutter) vai ler
       "data": {
         "tipo": "NOVO_ALERTA",
         "action": "SYNC_ALERTS",
-        "programa": programa || "Geral",
-        "trecho": trecho || "Nova Oportunidade VIP!",
-        "since": new Date().toISOString()
+        "id": String(dadosPush.idApp || `FCM_${Date.now()}`),
+        "programa": String(dadosPush.programa || "Geral"),
+        "trecho": String(dadosPush.trecho || "Nova Oportunidade VIP!"),
+        "mensagem": String(dadosPush.texto || "").substring(0, 200), // Proteção de 4KB
+        "data": new Date().toISOString(),
+        "link": String(dadosPush.linkUrl || ""),
+        "data_ida": String(dadosPush.dataIda || "N/A"),
+        "data_volta": String(dadosPush.dataVolta || "N/A"),
+        "milhas": String(dadosPush.milhas || "N/A"),
+        "valor_fabricado": String(dadosPush.valorFabricado || "N/A"),
+        "valor_emissao": String(dadosPush.valorEmissao || "N/A"),
+        "valor_balcao": String(dadosPush.valorBalcao || "N/A"),
+        "detalhes": String(dadosPush.detalhes || "").substring(0, 300), // Proteção de 4KB
+        "link_agencia": String(dadosPush.linkEmissaoFamilhas || "N/A"),
+        "mensagem_balcao": String(dadosPush.msgBalcao || "N/A").substring(0, 150), // Proteção de 4KB
+        "taxas": String(dadosPush.taxasAereas || "N/A")
       },
-      // 3. Furando o "Doze Mode" (Modo de Economia de Bateria)
-      "android": {
-        "priority": "HIGH",
-        "notification": {
-          "channel_id": "alertas_vip",
-          "sound": "default" // Força o Android a se preparar para tocar som
-        }
-      },
+      "android": { "priority": "HIGH" },
       "apns": {
         "headers": { "apns-priority": "10" },
-        "payload": {
-          "aps": {
-            "sound": "default",
-            "content-available": 1
-          }
-        }
+        "payload": { "aps": { "content-available": 1 } }
       }
     }
   };
 
   let sucessoCount = 0;
 
-  tokens.forEach(fcmToken => {
+  // Atira em todos os tokens mapeados!
+  todosTokens.forEach(fcmToken => {
     try {
       payloadBase.message.token = fcmToken;
       
@@ -129,15 +143,13 @@ function enviarPushParaAtivos(programa, trecho) {
         const respostaErro = response.getContentText();
         console.error("Erro no token " + fcmToken + ". Firebase: " + respostaErro);
         
-        // 🚀 FAXINA AUTOMÁTICA DE TOKENS INVÁLIDOS
+        // 🧹 Faxina Inteligente e Imediata!
         if (responseCode === 404 || respostaErro.includes("UNREGISTERED") || respostaErro.includes("INVALID_ARGUMENT")) {
-           for (let i = 0; i < data.length; i++) {
-             if (data[i][10] === fcmToken) { 
-               sheet.getRange(i + 1, 11).setValue(''); 
-               console.log("🧹 Token morto removido da linha " + (i + 1));
-               break;
-             }
-           }
+            const coordenada = mapaTokens[fcmToken];
+            if (coordenada) {
+              sheet.getRange(coordenada.linha, coordenada.coluna).setValue(''); 
+              console.log(`🧹 Token morto removido da linha ${coordenada.linha}, coluna ${coordenada.coluna}`);
+            }
         }
       }
 
@@ -146,9 +158,8 @@ function enviarPushParaAtivos(programa, trecho) {
     }
   });
 
-  console.log(`✅ Push Ninja finalizado! Entregue para ${sucessoCount} de ${tokens.length} dispositivos.`);
+  console.log(`✅ Push Ninja finalizado! Entregue para ${sucessoCount} de ${todosTokens.length} dispositivos.`);
 }
-
 // 🚀 BUSCADOR DE AEROPORTOS (Lê a aba TAXAS_AERO)
 function buscarAeroportos() {
   const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
@@ -178,4 +189,16 @@ function buscarAeroportos() {
   
   // Remove duplicatas caso existam e retorna a lista
   return [...new Set(listaFormatada)];
+}
+
+const DEBUG_MODE = true; // 🚀 A CHAVE MESTRA DO SERVIDOR
+
+function logger(msg, type = "INFO") {
+  if (!DEBUG_MODE) return;
+  
+  if (type === "ERROR") {
+    console.error(msg);
+  } else {
+    console.log(msg);
+  }
 }
