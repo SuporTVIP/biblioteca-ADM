@@ -23,6 +23,7 @@ function renovarVencimento() {
 
   // 2. Captura a data atual na Coluna F (Índice 6)
   // getRange(linha, coluna) -> Coluna F é a 6ª coluna
+  // TODO: Substituir mapeamento fixo por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
   var cellData = sheet.getRange(row, 6); 
   var dataAtual = new Date(cellData.getValue());
 
