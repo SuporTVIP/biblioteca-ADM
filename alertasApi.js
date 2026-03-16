@@ -15,13 +15,10 @@ function buscarAlertasDelta(lastSyncIso) {
       } catch(e) {}
 
       // 🚀 A MÁGICA DA BLINDAGEM DE ID ESTÁ AQUI
-      // 1. Tenta usar o ID Semântico Perfeito que o seu robô cria (ex: 20260226_AZUL_RECIFE).
-      // 2. Se for uma linha inserida na mão (sem metadados), ele cria um ID infalível
-      // misturando a data/hora exata do cadastro em milissegundos com o número da linha.
       const idUnico = metadados.id_app ? metadados.id_app : "SYS_" + dataLinha + "_L" + i;
 
       novos.push({
-        id: idUnico, // 🚀 Usa o RG blindado aqui!
+        id: idUnico, 
         mensagem: data[i][0] || "",
         programa: data[i][1] || "OUTROS",
         data: data[i][2],
@@ -42,9 +39,10 @@ function buscarAlertasDelta(lastSyncIso) {
   }
   return novos;
 }
+
 /**
  * 🚀 DISPARADOR DE PUSH NINJA (FCM v1) - DATA ONLY
- * Percorre os tokens ativos e envia o pacote de dados oculto para o Flutter.
+ * Percorre os tokens ativos usando Mapeamento Dinâmico e envia o pacote.
  */
 function enviarPushParaAtivos(dadosPush) {
   const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
@@ -52,31 +50,58 @@ function enviarPushParaAtivos(dadosPush) {
   if (!sheet) return;
 
   const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return;
+
+  // =================================================================
+  // 🚀 MAPEAMENTO DINÂMICO (A Vacina contra quebras de colunas)
+  // =================================================================
+  const cabecalhosRaw = data[0]; // Pega a linha 1 inteira
   
+  const normalizar = (texto) => {
+    if (!texto) return "";
+    return texto.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+  };
+
+  const cabecalhosNormalizados = cabecalhosRaw.map(normalizar);
+  const buscarIdx = (nomeChave) => cabecalhosNormalizados.indexOf(normalizar(nomeChave));
+
+  const idxStatus    = buscarIdx(COLUNAS_CONTROLE_ACESSO.STATUS);
+  const idxFcmMobile = buscarIdx(COLUNAS_CONTROLE_ACESSO.FCM_MOBILE);
+  const idxFcmWeb    = buscarIdx(COLUNAS_CONTROLE_ACESSO.FCM_WEB);
+
+  // Proteção: Se alguém deletar a coluna de FCM, o robô avisa e não quebra
+  if (idxStatus === -1 || idxFcmMobile === -1 || idxFcmWeb === -1) {
+     console.error("❌ [PUSH] ERRO: Colunas de Status ou Tokens não encontradas no cabeçalho.");
+     return;
+  }
+
   // 🚀 O NOVO MOTOR DE DISPARO DUPLO (Mobile + Web)
   let todosTokens = [];
   let mapaTokens = {}; // Guarda a "coordenada" do token para a faxina rápida
 
-  data.forEach((row, index) => {
-    // row[7] é a Coluna H (Status ATIVO)
-    // TODO: Substituir índices fixos (7, 10, 13) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-    if (row[7] === "ATIVO") {
-      const tokenMobile = row[10] ? row[10].toString().trim() : ""; // Coluna K (Índice 10)
-      const tokenWeb = row[13] ? row[13].toString().trim() : "";    // Coluna N (Índice 13)
+  // Loop começa de 1 para pular o cabeçalho
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    
+    // Lê usando as variáveis dinâmicas em vez de números fixos
+    if (String(row[idxStatus]).trim().toUpperCase() === "ATIVO") {
+      const tokenMobile = row[idxFcmMobile] ? row[idxFcmMobile].toString().trim() : "";
+      const tokenWeb    = row[idxFcmWeb] ? row[idxFcmWeb].toString().trim() : "";    
 
-      let linhaReal = index + 1; // Index 0 = Linha 1 da planilha
+      let linhaReal = i + 1; // Index 0 do array = Linha 1 da planilha
 
       if (tokenMobile !== "") {
         todosTokens.push(tokenMobile);
-        mapaTokens[tokenMobile] = { linha: linhaReal, coluna: 11 }; // 11 = K
+        // Salva a coordenada exata somando +1 ao index do array
+        mapaTokens[tokenMobile] = { linha: linhaReal, coluna: idxFcmMobile + 1 }; 
       }
       
       if (tokenWeb !== "") {
         todosTokens.push(tokenWeb);
-        mapaTokens[tokenWeb] = { linha: linhaReal, coluna: 14 }; // 14 = N
+        mapaTokens[tokenWeb] = { linha: linhaReal, coluna: idxFcmWeb + 1 }; 
       }
     }
-  });
+  }
 
   if (todosTokens.length === 0) {
     console.log("Nenhum FCM Token ativo encontrado para envio.");
@@ -144,7 +169,7 @@ function enviarPushParaAtivos(dadosPush) {
         const respostaErro = response.getContentText();
         console.error("Erro no token " + fcmToken + ". Firebase: " + respostaErro);
         
-        // 🧹 Faxina Inteligente e Imediata!
+        // 🧹 Faxina Inteligente e Imediata! (Agora usando as coordenadas dinâmicas)
         if (responseCode === 404 || respostaErro.includes("UNREGISTERED") || respostaErro.includes("INVALID_ARGUMENT")) {
             const coordenada = mapaTokens[fcmToken];
             if (coordenada) {
@@ -161,13 +186,12 @@ function enviarPushParaAtivos(dadosPush) {
 
   console.log(`✅ Push Ninja finalizado! Entregue para ${sucessoCount} de ${todosTokens.length} dispositivos.`);
 }
+
 // 🚀 BUSCADOR DE AEROPORTOS (Lê a aba TAXAS_AERO)
 function buscarAeroportos() {
   const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
   
-  // 🐛 CORREÇÃO: Variável renomeada para não conflitar com o objeto global 'aba'
   const abaAero = ss.getSheetByName(aba.TAXAS_AERO); 
-  
   const lastRow = abaAero.getLastRow();
   
   if (lastRow < 2) return [];

@@ -114,7 +114,6 @@ function obterIdsClientesAtivos(ss) {
   // Pega colunas F (Vencimento), G (Status), H (ID Planilha)
   // Indices base 0 a partir da coluna A: F=5, G=6, H=7
   // Mas vamos pegar o range a partir da linha 2, coluna 1 até H
-  // TODO: Substituir mapeamento fixo por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
   const dados = abaControle.getRange(2, 1, lastRow - 1, 8).getValues();
   
   let idsValidos = [];
@@ -122,7 +121,6 @@ function obterIdsClientesAtivos(ss) {
   hoje.setHours(0,0,0,0);
 
   dados.forEach(linha => {
-    // TODO: Substituir índices fixos (5, 6, 7) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
     const vencimento = linha[5] ? new Date(linha[5]) : null; 
     const status = linha[6];      
     const idPlanilha = linha[7]; 

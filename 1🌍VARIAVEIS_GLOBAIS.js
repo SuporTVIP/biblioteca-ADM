@@ -2,7 +2,6 @@
 
 // LISTA DE ABAS
 const aba = {
-  // TODO: Implementar Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado para esta aba
   CONTROLE_ACESSO: 'CONTROLE_ACESSO',
   DEBUG_WPP: 'DEBUG_WPP',
   CONFIGURACOES: 'CONFIGURAÇÕES',
@@ -12,6 +11,24 @@ const aba = {
   PROBLEMAS_SOLUCOES: 'PROBLEMAS E SOLUÇÕES',
   ALERTAS: 'ALERTAS',
   RADAR_NOTICIAS: 'RADAR_NOTICIAS'
+};
+
+// ABA Controle de acesso
+const COLUNAS_CONTROLE_ACESSO = {
+  USUARIO:       "USUÁRIO",
+  EMAIL:         "EMAIL",
+  STATUS:        "STATUS",
+  VENCIMENTO:    "VENCIMENTO",
+  ID_PLANILHA:   "ID PLANILHA CLIENTE",
+  DATA_CADASTRO: "DATA DE CADASTRO",
+  ULTIMO_ACESSO: "DATA ULTIMO ACESSO", // Removido o acento para bater com a planilha
+  TOKEN:         "TOKEN",
+  DEVICE_ID:     "DEVICE ID",
+  DEVICE_ID_2:   "2° DEVICE ID",       // Trocado º por ° para bater com a planilha
+  SESSION:       "STRING_SESSION",
+  FILTRO:        "FILTRO_BALCÕES",     // Ajustado para o nome real da planilha
+  FCM_MOBILE:    "FCM_TOKEN_MOB",          // Ajustado para o nome real da planilha
+  FCM_WEB:       "FCM_TOKEN_WEB"
 };
 
 // LISTA DE INTERVALOS OU CÉLULAS DE CONFIGURAÇÕES

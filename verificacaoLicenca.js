@@ -1,6 +1,6 @@
 /**
  * Gerencia o Login e Slots de Dispositivos (Máximo 2)
- * Baseado na aba: CONTROLE_ACESSO (Linha 2 - Usuário Principal)
+ * Totalmente Dinâmico: Independente da ordem das colunas.
  */
 function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenWeb) {
   const lock = LockService.getScriptLock();
@@ -12,26 +12,45 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenW
     
     if (lastRow < 2) return { status: "error", message: "Nenhuma licença cadastrada no sistema." };
     
-    // ✅ CORRIGIDO: Começa na linha 2, COLUNA 2 (B), pega até o final, varrendo 8 colunas (B até I)
-    // TODO: Substituir mapeamento fixo (coluna 2, 8 colunas) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-    const range = abaControle.getRange(2, 2, lastRow - 1, 8); 
-    const valores = range.getValues();
+    // =================================================================
+    // 🚀 MAPEAMENTO DINÂMICO
+    // =================================================================
+    const cabecalhosRaw = abaControle.getRange(1, 1, 1, abaControle.getLastColumn()).getValues()[0];
+    const normalizar = (t) => (t || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+    const cabNormalizados = cabecalhosRaw.map(normalizar);
+    const buscarIdx = (chave) => cabNormalizados.indexOf(normalizar(chave));
+
+    const idxUsuario      = buscarIdx(COLUNAS_CONTROLE_ACESSO.USUARIO);
+    const idxEmail        = buscarIdx(COLUNAS_CONTROLE_ACESSO.EMAIL);
+    const idxSlot1        = buscarIdx(COLUNAS_CONTROLE_ACESSO.DEVICE_ID);
+    const idxSlot2        = buscarIdx(COLUNAS_CONTROLE_ACESSO.DEVICE_ID_2);
+    const idxToken        = buscarIdx(COLUNAS_CONTROLE_ACESSO.TOKEN);
+    const idxVencimento   = buscarIdx(COLUNAS_CONTROLE_ACESSO.VENCIMENTO);
+    const idxStatus       = buscarIdx(COLUNAS_CONTROLE_ACESSO.STATUS);
+    const idxIdPlanilha   = buscarIdx(COLUNAS_CONTROLE_ACESSO.ID_PLANILHA);
+    const idxUltimoAcesso = buscarIdx(COLUNAS_CONTROLE_ACESSO.ULTIMO_ACESSO);
+    const idxFcmMobile    = buscarIdx(COLUNAS_CONTROLE_ACESSO.FCM_MOBILE);
+    const idxFcmWeb       = buscarIdx(COLUNAS_CONTROLE_ACESSO.FCM_WEB);
+
+    if (idxEmail === -1 || idxToken === -1 || idxSlot1 === -1) {
+      return { status: "error", message: "Erro de Mapeamento: Colunas essenciais não encontradas." };
+    }
+
+    const valores = abaControle.getDataRange().getValues();
     
-    for (let i = 0; i < valores.length; i++) {
-      // TODO: Substituir índices fixos (0 a 7) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-      let usuario    = (valores[i][0]|| "").toString().trim() ; // Coluna B
-      let dbEmail    = (valores[i][1]|| "").toString().trim().toLowerCase(); // Coluna C
-      let slot1      = (valores[i][2]|| "").toString(); // Coluna D
-      let slot2      = (valores[i][3]|| "").toString(); // Coluna E
-      let dbToken    = (valores[i][4]|| "").toString().trim().toUpperCase(); // Coluna F
-      let status     = (valores[i][6]|| "").toString(); // Coluna H
-      let idPlanilha = (valores[i][7]|| "").toString().trim(); // Coluna I
+    for (let i = 1; i < valores.length; i++) { // Começa do 1 para pular cabeçalho
+      let usuario    = (valores[i][idxUsuario] || "").toString().trim();
+      let dbEmail    = (valores[i][idxEmail] || "").toString().trim().toLowerCase();
+      let slot1      = (valores[i][idxSlot1] || "").toString();
+      let slot2      = (valores[i][idxSlot2] || "").toString();
+      let dbToken    = (valores[i][idxToken] || "").toString().trim().toUpperCase();
+      let status     = (valores[i][idxStatus] || "").toString().toUpperCase();
+      let idPlanilha = (valores[i][idxIdPlanilha] || "").toString().trim();
       
-      let reqEmail =   (email || "").toString().trim().toLowerCase(); // Coluna 
-      let reqToken =   (token|| "").toString().trim().toUpperCase(); // Coluna 
+      let reqEmail = (email || "").toString().trim().toLowerCase();
+      let reqToken = (token || "").toString().trim().toUpperCase();
       
-      // Formata a data de vencimento (Coluna G)
-      let rawVencimento = valores[i][5];
+      let rawVencimento = valores[i][idxVencimento];
       let dbVencimento = (rawVencimento instanceof Date) 
         ? Utilities.formatDate(rawVencimento, Session.getScriptTimeZone(), "dd/MM/yyyy") 
         : rawVencimento.toString();
@@ -41,14 +60,11 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenW
           return { status: "error", message: "Licença inativa ou suspensa." };
         }
         
-        let rowIndex = i + 2; 
+        let rowIndex = i + 1; 
 
-        // 🚀 LINHA ADICIONADA: Registra o pulso de acesso na Coluna J (10)
-        // Isso acontece sempre que um usuário válido tenta entrar ou renovar a sessão
-        // TODO: Substituir índice fixo (10) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-        abaControle.getRange(rowIndex, 10).setValue(new Date());
+        // Registra o pulso de acesso na coluna correta
+        if (idxUltimoAcesso !== -1) abaControle.getRange(rowIndex, idxUltimoAcesso + 1).setValue(new Date());
         
-        // 🚀 O NOVO PAYLOAD COM OS DADOS EXTRAS
         const sucessoRetorno = {
            status: "success", 
            message: "Acesso Liberado",
@@ -57,28 +73,23 @@ function verificarLicencaDispositivo(deviceId, token, email, fcmToken, fcmTokenW
            idPlanilha: idPlanilha
         };
 
-        // 🚀 Ajustado para usar as variáveis corretas da sua função
-        if (fcmToken && fcmToken !== "") {
-            // TODO: Substituir índice fixo (11) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-            abaControle.getRange(rowIndex, 11).setValue(fcmToken); // Salva na Coluna K
+        // Salva os Tokens Push se enviados
+        if (fcmToken && fcmToken !== "" && idxFcmMobile !== -1) {
+            abaControle.getRange(rowIndex, idxFcmMobile + 1).setValue(fcmToken); 
+        }
+        if (fcmTokenWeb && fcmTokenWeb !== "" && idxFcmWeb !== -1) {
+            abaControle.getRange(rowIndex, idxFcmWeb + 1).setValue(fcmTokenWeb); 
         }
 
-        // 🚀 NOVO: Salva na Coluna N (14) (Token Web)
-        if (fcmTokenWeb && fcmTokenWeb !== "") {
-            // TODO: Substituir índice fixo (14) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-            abaControle.getRange(rowIndex, 14).setValue(fcmTokenWeb); 
-        }
-
+        // Verifica os Slots de Device ID
         if (slot1 === deviceId || slot2 === deviceId) return sucessoRetorno;
         
         if (slot1 === "") {
-          // TODO: Substituir índice fixo (4) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-          abaControle.getRange(rowIndex, 4).setValue(deviceId); 
+          abaControle.getRange(rowIndex, idxSlot1 + 1).setValue(deviceId); 
           return sucessoRetorno;
         }
         if (slot2 === "") {
-          // TODO: Substituir índice fixo (5) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-          abaControle.getRange(rowIndex, 5).setValue(deviceId); 
+          abaControle.getRange(rowIndex, idxSlot2 + 1).setValue(deviceId); 
           return sucessoRetorno;
         }
         
@@ -108,28 +119,29 @@ function removerLicencaDispositivo(deviceId) {
     
     if (lastRow < 2) return { status: "error", message: "Planilha vazia." };
     
-    // Lê apenas as colunas D e E (Slots 1 e 2)
-    // TODO: Substituir mapeamento fixo (coluna 4) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-    const range = abaControle.getRange(2, 4, lastRow - 1, 2); 
-    const valores = range.getValues();
+    // Mapeamento Dinâmico
+    const cabecalhosRaw = abaControle.getRange(1, 1, 1, abaControle.getLastColumn()).getValues()[0];
+    const normalizar = (t) => (t || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+    const cabNormalizados = cabecalhosRaw.map(normalizar);
     
-    for (let i = 0; i < valores.length; i++) {
-      // TODO: Substituir índices fixos (0, 1) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-      let slot1 = valores[i][0].toString();
-      let slot2 = valores[i][1].toString();
-      
-      let rowIndex = i + 2;
+    const idxSlot1 = cabNormalizados.indexOf(normalizar(COLUNAS_CONTROLE_ACESSO.DEVICE_ID));
+    const idxSlot2 = cabNormalizados.indexOf(normalizar(COLUNAS_CONTROLE_ACESSO.DEVICE_ID_2));
 
-      // Se achou o Device ID no Slot 1, apaga.
+    if (idxSlot1 === -1 || idxSlot2 === -1) return { status: "error", message: "Colunas de Device ID não encontradas." };
+
+    const valores = abaControle.getDataRange().getValues();
+    
+    for (let i = 1; i < valores.length; i++) {
+      let slot1 = (valores[i][idxSlot1] || "").toString();
+      let slot2 = (valores[i][idxSlot2] || "").toString();
+      let rowIndex = i + 1;
+
       if (slot1 === deviceId) {
-        // TODO: Substituir índice fixo (4) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-        abaControle.getRange(rowIndex, 4).clearContent(); 
+        abaControle.getRange(rowIndex, idxSlot1 + 1).clearContent(); 
         return { status: "success", message: "Vaga 1 liberada." };
       }
-      // Se achou no Slot 2, apaga.
       if (slot2 === deviceId) {
-        // TODO: Substituir índice fixo (5) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-        abaControle.getRange(rowIndex, 5).clearContent(); 
+        abaControle.getRange(rowIndex, idxSlot2 + 1).clearContent(); 
         return { status: "success", message: "Vaga 2 liberada." };
       }
     }
@@ -143,6 +155,42 @@ function removerLicencaDispositivo(deviceId) {
   }
 }
 
+/**
+ * Registrar apenas o Token FCM (Versão Adaptada para Planilha Dinâmica)
+ */
+function registrarTokenFCM(e) {
+  const token = e.parameter.token;
+  const email = (e.parameter.email || "").toString().trim().toLowerCase();
+  
+  if (!token) return { status: "error", message: "Token ausente" };
+
+  const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
+  let sheet = ss.getSheetByName(aba.CONTROLE_ACESSO);
+  if (!sheet) return { status: "error", message: "Aba de controle não existe." };
+
+  const cabecalhosRaw = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const normalizar = (t) => (t || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+  const cabNormalizados = cabecalhosRaw.map(normalizar);
+  
+  const idxEmail = cabNormalizados.indexOf(normalizar(COLUNAS_CONTROLE_ACESSO.EMAIL));
+  const idxFcmMobile = cabNormalizados.indexOf(normalizar(COLUNAS_CONTROLE_ACESSO.FCM_MOBILE));
+
+  if (idxEmail === -1 || idxFcmMobile === -1) return { status: "error", message: "Colunas não mapeadas." };
+
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    let dbEmail = (data[i][idxEmail] || "").toString().trim().toLowerCase();
+    
+    // Atualiza o token na linha do cliente que pediu
+    if (dbEmail === email) {
+      sheet.getRange(i + 1, idxFcmMobile + 1).setValue(token);
+      return { status: "success", message: "Token FCM atualizado para o usuário." };
+    }
+  }
+
+  return { status: "error", message: "Usuário não encontrado." };
+}
 /**
  * 🔐 GERAÇÃO DO TOKEN DE ACESSO (MODO RAIZ / SEM BIBLIOTECA)
  * Cria e assina um JWT nativamente para autenticar no Firebase.
@@ -195,43 +243,4 @@ function getAccessToken() {
     console.error("❌ Falha crítica na criptografia JWT:", e.toString());
     return null;
   }
-}
-
-/**
- * Recebe o Token FCM do dispositivo e salva na planilha.
- * Chamado pelo Flutter via POST ou GET action=REGISTER_TOKEN
- */
-function registrarTokenFCM(e) {
-  const token = e.parameter.token;
-  const email = e.parameter.email || "usuario_app"; // Se você tiver login depois
-  
-  if (!token) return { status: "error", message: "Token ausente" };
-
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("CONTROLE_ACESSO");
-  
-  // Cria a aba se não existir
-  if (!sheet) {
-    sheet = ss.insertSheet("CONTROLE_ACESSO");
-    sheet.appendRow(["DATA_REGISTRO", "USUARIO", "TOKEN_FCM", "STATUS"]);
-  }
-
-  const data = sheet.getDataRange().getValues();
-  let encontrado = false;
-
-  // Evita duplicados: Se o token já existe, só atualiza a data
-  for (let i = 1; i < data.length; i++) {
-    // TODO: Substituir índices fixos (2, 1) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-    if (data[i][2] === token) {
-      sheet.getRange(i + 1, 1).setValue(new Date());
-      encontrado = true;
-      break;
-    }
-  }
-
-  if (!encontrado) {
-    sheet.appendRow([new Date(), email, token, "ATIVO"]);
-  }
-
-  return { status: "success", message: "Token registrado com sucesso" };
 }

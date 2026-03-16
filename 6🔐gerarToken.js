@@ -1,73 +1,86 @@
-// =================================================================
-// MÓDULO GERADOR DE TOKENS (SEM FORMATAÇÃO VISUAL)
-// =================================================================
-
-// 2. Função Principal
+/**
+ * Função Principal: Insere o token apenas se a célula ativa for na coluna correta.
+ */
 function inserirTokenNaCelula() {
-  var sheet = SpreadsheetApp.getActiveSheet();
-  var cell = sheet.getActiveCell();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getActiveSheet();
+  const cell = sheet.getActiveCell();
   
-  // Proteção: Impede escrever no cabeçalho
+  // 1. Verificação de Segurança: Aba Correta
+  if (sheet.getName() !== aba.CONTROLE_ACESSO) {
+    ss.toast("⚠️ Esta função só funciona na aba " + aba.CONTROLE_ACESSO, "Ação Cancelada");
+    return;
+  }
+
+  // 2. Verificação de Segurança: Cabeçalho
   if (cell.getRow() === 1) {
     SpreadsheetApp.getUi().alert('⚠️ Selecione uma linha abaixo do cabeçalho.');
     return;
   }
 
-  // Define qual coluna será verificada para evitar duplicidade
-  // 3 = Coluna C. Se mudar a coluna do token na planilha, mude este número.
-  var colunaDosTokens = 3; 
+  // 3. MAPEAMENTO DINÂMICO
+  const cabecalhos = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const colIndexToken = cabecalhos.indexOf(COLUNAS_CONTROLE_ACESSO.TOKEN) + 1;
 
-  // Chama o motor de geração
-  var novoToken = gerarTokenUnico(sheet, colunaDosTokens);
-  
-  // Apenas insere o valor (Mantém a cor original da planilha)
-  cell.setValue(novoToken);
-}
-
-// 3. Motor de Geração com Loop de Verificação (Retry)
-function gerarTokenUnico(sheet, colIndex) {
-  var lastRow = sheet.getLastRow();
-  var tokensExistentes = [];
-
-  // Pega todos os tokens já cadastrados para comparar
-  // (Otimização: Pega tudo de uma vez para não ler a planilha a cada loop)
-  if (lastRow > 1) {
-     tokensExistentes = sheet.getRange(2, colIndex, lastRow - 1, 1).getValues().flat();
+  // 4. Bloqueio: Verifica se o usuário está na coluna de TOKEN
+  if (cell.getColumn() !== colIndexToken) {
+    SpreadsheetApp.getUi().alert('⚠️ Ação Proibida: Você só pode gerar tokens na coluna "' + COLUNAS_CONTROLE_ACESSO.TOKEN + '".');
+    return;
   }
 
-  var token = "";
-  var isDuplicado = true;
-  var countSeguranca = 0; // Evita travamento eterno em caso de erro crítico
+  // 5. Motor de geração (Passa o índice dinâmico para checar duplicidade)
+  try {
+    const novoToken = gerarTokenUnico(sheet, colIndexToken);
+    cell.setValue(novoToken);
+    ss.toast("Token gerado com sucesso!", "✅ Concluído");
+  } catch (e) {
+    SpreadsheetApp.getUi().alert(e.message);
+  }
+}
 
-  // LOOP RECURSIVO / DO-WHILE
-  // "Faça isso... Enquanto o token for duplicado"
+/**
+ * Motor de Geração: Garante que o token não exista na coluna mapeada.
+ */
+function gerarTokenUnico(sheet, colIndex) {
+  const lastRow = sheet.getLastRow();
+  let tokensExistentes = [];
+
+  // Pega todos os tokens já cadastrados na coluna mapeada
+  if (lastRow > 1) {
+    tokensExistentes = sheet.getRange(2, colIndex, lastRow - 1, 1).getValues().flat();
+  }
+
+  let token = "";
+  let isDuplicado = true;
+  let countSeguranca = 0;
+
   do {
     token = criarStringAleatoria();
     
-    // Verifica: O token gerado existe na lista de tokens existentes?
-    // indexOf retorna -1 se NÃO achar. Se for diferente de -1, é duplicado.
     if (tokensExistentes.indexOf(token) === -1) {
-      isDuplicado = false; // Achamos um inédito! Sai do loop.
+      isDuplicado = false; 
     } else {
-      console.log("Colisão detectada! Gerando novamente..."); // Log interno
+      console.log("Colisão de token detectada: " + token);
     }
 
     countSeguranca++;
-    if (countSeguranca > 500) throw new Error("Erro Crítico: Limite de tentativas excedido.");
+    if (countSeguranca > 500) throw new Error("Erro Crítico: Não foi possível gerar um token único após 500 tentativas.");
 
   } while (isDuplicado);
 
   return token;
 }
 
-// 4. Alfabeto Seguro (Sem confusão visual: O/0, I/1, L)
+/**
+ * Alfabeto Seguro: Remove letras que causam confusão (0, O, 1, I, L)
+ */
 function criarStringAleatoria() {
-  var caracteres = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; 
-  var tamanho = 6;
-  var resultado = "";
+  const caracteres = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; 
+  const tamanho = 6;
+  let resultado = "";
   
-  for (var i = 0; i < tamanho; i++) {
-    var indice = Math.floor(Math.random() * caracteres.length);
+  for (let i = 0; i < tamanho; i++) {
+    const indice = Math.floor(Math.random() * caracteres.length);
     resultado += caracteres.charAt(indice);
   }
   

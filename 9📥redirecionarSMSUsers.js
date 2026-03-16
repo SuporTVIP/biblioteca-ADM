@@ -1,6 +1,5 @@
-
 // =================================================================
-// 2. SMS API (smsApi.gs) - VERSÃO DEFINITIVA BLINDADA 🚀
+// 2. SMS API (smsApi.gs) - VERSÃO DEFINITIVA DINÂMICA 🚀
 // =================================================================
 
 function processarSmsVindoApp(data) {
@@ -11,8 +10,7 @@ function processarSmsVindoApp(data) {
   try {
     lock.waitLock(10000);
     
-    // 🚀 1. O TRATOR DE LIMPEZA NOS DADOS DO APP
-    // Força virar string, remove espaços e padroniza o token para MAIÚSCULO
+    // 🚀 1. O TRATOR DE LIMPEZA NOS DADOS DO APP (Case e Spaces)
     const reqToken = String(data.license_key || data.token || "").trim().toUpperCase(); 
     const reqDeviceId = String(data.device_id || data.deviceId || "").trim(); 
     const reqEmailApp = String(data.target_email || data.email || "").trim().toLowerCase(); 
@@ -28,32 +26,65 @@ function processarSmsVindoApp(data) {
 
     const ss = SpreadsheetApp.openById(configGeral.ID_PLANILHA_ADM);
     const sheet = ss.getSheetByName(aba.CONTROLE_ACESSO);
-    const lastRow = sheet.getLastRow();
     
-    // Lê da Coluna A[0] até a M[12]
-    // TODO: Substituir mapeamento fixo por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-    const range = sheet.getRange(2, 1, lastRow - 1, 13).getValues(); 
+    // =================================================================
+    // 🚀 2. MAPEAMENTO DINÂMICO DE CABEÇALHOS (A Vacina)
+    // =================================================================
+    const cabecalhosRaw = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Função interna para limpar acentos, espaços e padronizar maiúsculas
+    const normalizar = (texto) => {
+      if (!texto) return "";
+      return texto.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+    };
+
+    const cabecalhosNormalizados = cabecalhosRaw.map(h => normalizar(h));
+    
+    // Função para buscar o índice da coluna (0-based para usar no array da linha)
+    const buscarIdx = (nomeChave) => cabecalhosNormalizados.indexOf(normalizar(nomeChave));
+
+    const idxEmail      = buscarIdx(COLUNAS_CONTROLE_ACESSO.EMAIL);
+    const idxSlot1      = buscarIdx(COLUNAS_CONTROLE_ACESSO.DEVICE_ID);
+    const idxSlot2      = buscarIdx(COLUNAS_CONTROLE_ACESSO.DEVICE_ID_2);
+    const idxToken      = buscarIdx(COLUNAS_CONTROLE_ACESSO.TOKEN);
+    const idxStatus     = buscarIdx(COLUNAS_CONTROLE_ACESSO.STATUS);
+    const idxIdPlanilha = buscarIdx(COLUNAS_CONTROLE_ACESSO.ID_PLANILHA);
+
+    // Proteção extrema: Verifica se as colunas essenciais sumiram
+    if (idxEmail === -1 || idxToken === -1 || idxStatus === -1 || idxIdPlanilha === -1) {
+       console.error("❌ [SMS API] ERRO: Colunas vitais não encontradas no cabeçalho.");
+       throw new Error("Erro interno: Falha de mapeamento de banco de dados.");
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) throw new Error("Banco de dados vazio.");
+
+    // Pega todos os dados da linha 2 até a última coluna e linha preenchidas
+    const rangeData = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues(); 
     
     let userFound = false;
     let targetSheetId = "";
 
-    for (let i = 0; i < range.length; i++) {
-      let row = range[i];
+    // =================================================================
+    // 🚀 3. VARREDURA BLINDADA
+    // =================================================================
+    for (let i = 0; i < rangeData.length; i++) {
+      let row = rangeData[i];
       
-      // 🚀 2. O TRATOR DE LIMPEZA NOS DADOS DA PLANILHA
-      // TODO: Substituir índices fixos (2, 3, 4, 5, 7, 8) por Mapeamento Dinâmico por Cabeçalho ou por Intervalo Nomeado
-      let dbEmail  = String(row[2] || "").trim().toLowerCase(); 
-      let slot1    = String(row[3] || "").trim();               
-      let slot2    = String(row[4] || "").trim();               
-      let dbToken  = String(row[5] || "").trim().toUpperCase(); // Padroniza banco para Maiúsculo também!
-      let dbStatus = String(row[7] || "").trim().toUpperCase();               
-      targetSheetId = String(row[8] || "").trim();              
+      // O Trator de Limpeza lê as posições dinâmicas descobertas no mapeamento
+      let dbEmail  = String(row[idxEmail] || "").trim().toLowerCase(); 
+      let slot1    = String(row[idxSlot1] || "").trim();               
+      let slot2    = String(row[idxSlot2] || "").trim();               
+      let dbToken  = String(row[idxToken] || "").trim().toUpperCase(); 
+      let dbStatus = String(row[idxStatus] || "").trim().toUpperCase();                
+      targetSheetId = String(row[idxIdPlanilha] || "").trim();             
 
+      // Tratamento para Token Legado no Slot2
       if (dbToken === "" && slot2 === reqToken) {
           dbToken = slot2;
       }
 
-      // Comparação blindada (como ambos passaram pelo trator, o match é garantido)
+      // Comparação Absoluta (Spaces e Case já foram normalizados)
       if (dbToken === reqToken && dbEmail === reqEmailApp) {
         console.log(`✅ [SMS API] Cliente localizado na linha ${i + 2} da aba CONTROLE_ACESSO.`);
         
@@ -62,7 +93,7 @@ function processarSmsVindoApp(data) {
           throw new Error("Licença inativa.");
         }
         
-        // Sua trava genial de DeviceID mantida 100%
+        // Trava de DeviceID 
         if (slot1 !== reqDeviceId && slot2 !== reqDeviceId) {
           console.warn(`⛔ [SMS API] Bloqueado: O ID do aparelho que mandou o SMS (${reqDeviceId}) não bate com a planilha (Slot1: ${slot1} | Slot2: ${slot2}).`);
           throw new Error("Aparelho não autorizado.");
@@ -75,14 +106,13 @@ function processarSmsVindoApp(data) {
 
     if (!userFound) {
       console.error("❌ [SMS API] Falha: O Token ou E-mail não batem com nenhuma linha da planilha.");
-      // 🚀 3. O MODO X-9 PARA TE AJUDAR A DEBUGAR
       throw new Error(`Credenciais não encontradas. O Google leu -> Email: [${reqEmailApp}] | Token: [${reqToken}]`);
     }
 
-    console.log(`🎯 [SMS API] ID da Planilha de Destino (Coluna I): '${targetSheetId}'`);
+    console.log(`🎯 [SMS API] ID da Planilha de Destino: '${targetSheetId}'`);
 
     // =================================================================
-    // GRAVAÇÃO DIRETA NA PLANILHA DO CLIENTE (Mantida Intacta)
+    // 4. GRAVAÇÃO NA PLANILHA DO CLIENTE
     // =================================================================
     if (targetSheetId && targetSheetId.length > 20) {
       try {
@@ -97,7 +127,8 @@ function processarSmsVindoApp(data) {
         
         const dataHoraBR = Utilities.formatDate(new Date(), "America/Sao_Paulo", "dd/MM/yyyy HH:mm:ss");
         clientSheet.insertRowBefore(2);
-        clientSheet.getRange(2, 1, 1, 3).setValues([[dataHoraBR, rawNumber, smsContent]]);
+        // Coluna A: Data, Coluna B: Número Formatado, Coluna C: Texto
+        clientSheet.getRange(2, 1, 1, 3).setValues([[dataHoraBR, formatarTelefoneBR(rawNumber), smsContent]]);
         
         console.log("🚀 [SMS API] SUCESSO ABSOLUTO! SMS gravado na linha 2 da planilha destino.");
         return { status: "success", message: "SMS Sincronizado." };
@@ -107,8 +138,8 @@ function processarSmsVindoApp(data) {
       }
     }
     
-    console.error("❌ [SMS API] O ID da planilha na Coluna I é muito curto ou está vazio.");
-    throw new Error("ID da Planilha do cliente não está configurado na Coluna I.");
+    console.error("❌ [SMS API] O ID da planilha do cliente é muito curto ou está vazio.");
+    throw new Error("ID da Planilha do cliente não está configurado corretamente.");
     
   } catch (e) {
     console.error("🔥 [SMS API] Erro Final Retornado ao App:", e.toString());
@@ -118,14 +149,17 @@ function processarSmsVindoApp(data) {
   }
 }
 
+// FORMATADOR MANTIDO (Seguro e Limpo)
 function formatarTelefoneBR(numero) {
   if (!numero) return "Desconhecido";
-  var str = numero.toString().trim();
+  let str = numero.toString().trim();
   if (/[a-zA-Z]/.test(str)) return str;
-  var limpo = str.replace(/\D/g, "");
+  let limpo = str.replace(/\D/g, "");
+  
   if (limpo.startsWith("55") && (limpo.length === 12 || limpo.length === 13)) {
      limpo = limpo.substring(2);
   }
+  
   if (limpo.length === 11) {
      return "(" + limpo.substring(0,2) + ") " + limpo.substring(2,7) + "-" + limpo.substring(7);
   }

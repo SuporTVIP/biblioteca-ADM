@@ -103,7 +103,7 @@ function SIMULAR_ENTRADA_WPP() {
 Programa: smiles
  
 Origem 🛫 SAO PAULO
-Destino 🛬 RIO GRANDE DO SUL
+Destino 🛬 RIO GRANDE DO NORTE
 
 ➡ 19/05 - 20.500 milhas
 ⬅ 27/05 - 13.500 milhas
